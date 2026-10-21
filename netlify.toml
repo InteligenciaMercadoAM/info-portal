@@ -1,0 +1,9 @@
+# Netlify: em "Site configuration > Build & deploy", defina Base directory = info-portal
+[build]
+  publish = "public"
+
+# Os JSONs mudam a cada exportação: o navegador sempre revalida
+[[headers]]
+  for = "/data/*"
+  [headers.values]
+    Cache-Control = "no-cache, must-revalidate"

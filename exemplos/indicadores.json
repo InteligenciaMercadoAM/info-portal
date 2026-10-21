@@ -1,0 +1,702 @@
+{
+ "exemplo": true,
+ "atualizado_em": "2026-10-05 07:30:00",
+ "indicadores": [
+  {
+   "id": "pib_brasil",
+   "nome": "PIB Brasil",
+   "setor": "Macroeconomia",
+   "regiao": "Nacional",
+   "unidade": "% a/a",
+   "frequencia": "Trimestral",
+   "polaridade": 1,
+   "limiar_estavel": 0.3,
+   "fonte": "4intelligence",
+   "fonte_original": "IBGE",
+   "ultima_divulgacao": "2026-09-02",
+   "proxima_divulgacao": "2026-12-03",
+   "referencia_proxima": "3T26",
+   "serie": [
+    {
+     "periodo": "3T24",
+     "valor": 3.9,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "4T24",
+     "valor": 3.6,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "1T25",
+     "valor": 2.9,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "2T25",
+     "valor": 2.2,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "3T25",
+     "valor": 2.1,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "4T25",
+     "valor": 1.8,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "1T26",
+     "valor": 1.6,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "2T26",
+     "valor": 1.5,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "3T26",
+     "valor": 1.7,
+     "tipo": "projecao"
+    },
+    {
+     "periodo": "4T26",
+     "valor": 1.9,
+     "tipo": "projecao"
+    },
+    {
+     "periodo": "1T27",
+     "valor": 2.0,
+     "tipo": "projecao"
+    },
+    {
+     "periodo": "2T27",
+     "valor": 2.1,
+     "tipo": "projecao"
+    }
+   ]
+  },
+  {
+   "id": "pib_construcao",
+   "nome": "PIB construção civil",
+   "setor": "Construção civil",
+   "regiao": "Nacional",
+   "unidade": "% a/a",
+   "frequencia": "Trimestral",
+   "polaridade": 1,
+   "destaque": true,
+   "limiar_estavel": 0.3,
+   "fonte": "4intelligence",
+   "fonte_original": "IBGE",
+   "ultima_divulgacao": "2026-09-02",
+   "proxima_divulgacao": "2026-12-03",
+   "referencia_proxima": "3T26",
+   "serie": [
+    {
+     "periodo": "3T24",
+     "valor": 4.2,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "4T24",
+     "valor": 3.5,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "1T25",
+     "valor": 2.8,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "2T25",
+     "valor": 1.9,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "3T25",
+     "valor": 1.4,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "4T25",
+     "valor": 1.1,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "1T26",
+     "valor": 1.6,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "2T26",
+     "valor": 2.1,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "3T26",
+     "valor": 2.3,
+     "tipo": "projecao"
+    },
+    {
+     "periodo": "4T26",
+     "valor": 2.5,
+     "tipo": "projecao"
+    },
+    {
+     "periodo": "1T27",
+     "valor": 2.6,
+     "tipo": "projecao"
+    },
+    {
+     "periodo": "2T27",
+     "valor": 2.6,
+     "tipo": "projecao"
+    }
+   ]
+  },
+  {
+   "id": "selic",
+   "nome": "Selic",
+   "setor": "Macroeconomia",
+   "regiao": "Nacional",
+   "unidade": "% a.a.",
+   "casas": 2,
+   "frequencia": "Mensal",
+   "polaridade": -1,
+   "destaque": true,
+   "limiar_estavel": 0.25,
+   "fonte": "4intelligence",
+   "fonte_original": "Banco Central",
+   "ultima_divulgacao": "2026-09-17",
+   "proxima_divulgacao": "2026-11-04",
+   "referencia_proxima": "Copom nov",
+   "serie": [
+    {
+     "periodo": "out/25",
+     "valor": 15,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "nov/25",
+     "valor": 15,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "dez/25",
+     "valor": 15,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "jan/26",
+     "valor": 14.75,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "fev/26",
+     "valor": 14.5,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "mar/26",
+     "valor": 14.25,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "abr/26",
+     "valor": 14.25,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "mai/26",
+     "valor": 14,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "jun/26",
+     "valor": 14,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "jul/26",
+     "valor": 13.75,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "ago/26",
+     "valor": 13.75,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "set/26",
+     "valor": 13.75,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "out/26",
+     "valor": 13.5,
+     "tipo": "projecao"
+    },
+    {
+     "periodo": "nov/26",
+     "valor": 13.25,
+     "tipo": "projecao"
+    },
+    {
+     "periodo": "dez/26",
+     "valor": 13.0,
+     "tipo": "projecao"
+    }
+   ]
+  },
+  {
+   "id": "cambio",
+   "nome": "Câmbio",
+   "setor": "Macroeconomia",
+   "regiao": "Nacional",
+   "unidade": "R$/US$",
+   "casas": 2,
+   "frequencia": "Mensal",
+   "polaridade": 1,
+   "destaque": true,
+   "fonte": "4intelligence",
+   "fonte_original": "Banco Central",
+   "ultima_divulgacao": "2026-10-01",
+   "proxima_divulgacao": "2026-11-03",
+   "referencia_proxima": "out/26",
+   "serie": [
+    {
+     "periodo": "out/25",
+     "valor": 5.38,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "nov/25",
+     "valor": 5.35,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "dez/25",
+     "valor": 5.41,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "jan/26",
+     "valor": 5.47,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "fev/26",
+     "valor": 5.52,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "mar/26",
+     "valor": 5.49,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "abr/26",
+     "valor": 5.44,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "mai/26",
+     "valor": 5.4,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "jun/26",
+     "valor": 5.36,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "jul/26",
+     "valor": 5.39,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "ago/26",
+     "valor": 5.45,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "set/26",
+     "valor": 5.42,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "out/26",
+     "valor": 5.46,
+     "tipo": "projecao"
+    },
+    {
+     "periodo": "nov/26",
+     "valor": 5.5,
+     "tipo": "projecao"
+    },
+    {
+     "periodo": "dez/26",
+     "valor": 5.55,
+     "tipo": "projecao"
+    }
+   ]
+  },
+  {
+   "id": "lancamentos_se",
+   "nome": "Lançamentos imobiliários",
+   "setor": "Construção civil",
+   "regiao": "Sudeste",
+   "unidade": "mil unid.",
+   "frequencia": "Trimestral",
+   "polaridade": 1,
+   "destaque": true,
+   "casas": 1,
+   "fonte": "4intelligence",
+   "fonte_original": "CBIC",
+   "ultima_divulgacao": "2026-08-20",
+   "proxima_divulgacao": "2026-11-19",
+   "referencia_proxima": "3T26",
+   "serie": [
+    {
+     "periodo": "3T24",
+     "valor": 48.2,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "4T24",
+     "valor": 51.0,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "1T25",
+     "valor": 44.1,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "2T25",
+     "valor": 46.3,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "3T25",
+     "valor": 45.0,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "4T25",
+     "valor": 47.8,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "1T26",
+     "valor": 43.9,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "2T26",
+     "valor": 44.6,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "3T26",
+     "valor": 45.1,
+     "tipo": "projecao"
+    },
+    {
+     "periodo": "4T26",
+     "valor": 46.0,
+     "tipo": "projecao"
+    },
+    {
+     "periodo": "1T27",
+     "valor": 47.2,
+     "tipo": "projecao"
+    },
+    {
+     "periodo": "2T27",
+     "valor": 48.0,
+     "tipo": "projecao"
+    }
+   ]
+  },
+  {
+   "id": "maq_agricolas",
+   "nome": "Produção de máquinas agrícolas",
+   "setor": "Agronegócio",
+   "regiao": "Nacional",
+   "unidade": "mil unid.",
+   "frequencia": "Mensal",
+   "polaridade": 1,
+   "casas": 1,
+   "fonte": "4intelligence",
+   "fonte_original": "Anfavea",
+   "ultima_divulgacao": "2026-09-08",
+   "proxima_divulgacao": "2026-10-08",
+   "referencia_proxima": "set/26",
+   "serie": [
+    {
+     "periodo": "out/25",
+     "valor": 5.1,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "nov/25",
+     "valor": 4.6,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "dez/25",
+     "valor": 3.9,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "jan/26",
+     "valor": 4.2,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "fev/26",
+     "valor": 4.8,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "mar/26",
+     "valor": 5.3,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "abr/26",
+     "valor": 5.0,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "mai/26",
+     "valor": 4.7,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "jun/26",
+     "valor": 4.4,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "jul/26",
+     "valor": 4.1,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "ago/26",
+     "valor": 4.3,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "set/26",
+     "valor": 4.0,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "out/26",
+     "valor": 3.9,
+     "tipo": "projecao"
+    },
+    {
+     "periodo": "nov/26",
+     "valor": 3.8,
+     "tipo": "projecao"
+    },
+    {
+     "periodo": "dez/26",
+     "valor": 3.7,
+     "tipo": "projecao"
+    }
+   ]
+  },
+  {
+   "id": "caminhoes",
+   "nome": "Produção de caminhões",
+   "setor": "Automotivo",
+   "regiao": "Nacional",
+   "unidade": "mil unid.",
+   "frequencia": "Mensal",
+   "polaridade": 1,
+   "casas": 1,
+   "fonte": "4intelligence",
+   "fonte_original": "Anfavea",
+   "ultima_divulgacao": "2026-09-08",
+   "proxima_divulgacao": "2026-10-08",
+   "referencia_proxima": "set/26",
+   "serie": [
+    {
+     "periodo": "out/25",
+     "valor": 12.4,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "nov/25",
+     "valor": 11.8,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "dez/25",
+     "valor": 9.6,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "jan/26",
+     "valor": 10.9,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "fev/26",
+     "valor": 12.2,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "mar/26",
+     "valor": 12.8,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "abr/26",
+     "valor": 12.1,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "mai/26",
+     "valor": 11.6,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "jun/26",
+     "valor": 11.9,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "jul/26",
+     "valor": 12.3,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "ago/26",
+     "valor": 12.0,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "set/26",
+     "valor": 11.7,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "out/26",
+     "valor": 11.8,
+     "tipo": "projecao"
+    },
+    {
+     "periodo": "nov/26",
+     "valor": 11.9,
+     "tipo": "projecao"
+    },
+    {
+     "periodo": "dez/26",
+     "valor": 12.1,
+     "tipo": "projecao"
+    }
+   ]
+  },
+  {
+   "id": "consumo_longos",
+   "nome": "Consumo aparente de aços longos",
+   "setor": "Siderurgia",
+   "regiao": "Nacional",
+   "unidade": "mil t",
+   "frequencia": "Mensal",
+   "polaridade": 1,
+   "casas": 0,
+   "fonte": "4intelligence",
+   "fonte_original": "Aço Brasil",
+   "ultima_divulgacao": "2026-09-24",
+   "proxima_divulgacao": "2026-10-22",
+   "referencia_proxima": "set/26",
+   "serie": [
+    {
+     "periodo": "out/25",
+     "valor": 1012,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "nov/25",
+     "valor": 985,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "dez/25",
+     "valor": 902,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "jan/26",
+     "valor": 941,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "fev/26",
+     "valor": 978,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "mar/26",
+     "valor": 1020,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "abr/26",
+     "valor": 1004,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "mai/26",
+     "valor": 996,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "jun/26",
+     "valor": 1015,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "jul/26",
+     "valor": 1031,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "ago/26",
+     "valor": 1022,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "set/26",
+     "valor": 1018,
+     "tipo": "realizado"
+    },
+    {
+     "periodo": "out/26",
+     "valor": 1025,
+     "tipo": "projecao"
+    },
+    {
+     "periodo": "nov/26",
+     "valor": 1030,
+     "tipo": "projecao"
+    },
+    {
+     "periodo": "dez/26",
+     "valor": 1040,
+     "tipo": "projecao"
+    }
+   ]
+  }
+ ]
+}

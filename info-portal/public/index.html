@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Portal IM | ArcelorMittal Longos</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <img
+        src="./data/arcelor.png"
+        alt="ArcelorMittal"
+        class="brand-logo"
+      >
+        <span class="brand-title">Portal de Inteligência de Mercado</span>
+      </div>
+      <nav id="nav">
+        <button class="nav active" data-page="home">Início</button>
+        <button class="nav" data-page="feed">Notícias</button>
+        <button class="nav" data-page="external">Mercado externo</button>
+        <button class="nav" data-page="indicators">Indicadores</button>
+        <button class="nav" data-page="competitors">Concorrentes</button>
+      </nav>
+      <div class="updated" id="updated" title="Última exportação dos dados">Carregando...</div>
+    </div>
+  </header>
+
+  <div class="filterbar">
+    <div class="filterbar-inner">
+      <input id="search" type="search" placeholder="Buscar notícia ou indicador">
+      <select id="sector" aria-label="Setor"><option value="">Todos os setores</option></select>
+      <select id="region" aria-label="Região"><option value="">Todas as regiões</option></select>
+      <select id="period" aria-label="Período"><option value="1">Último dia</option><option value="7" selected>Últimos 7 dias</option><option value="30">Últimos 30 dias</option><option value="90">Últimos 90 dias</option><option value="all">Todo o período</option></select>
+      <button id="more-filters" class="ghost" aria-expanded="false">Mais filtros</button>
+      <button id="clear" class="ghost">Limpar</button>
+    </div>
+    <div class="filterbar-inner advanced" id="advanced" hidden>
+      <label>Empresa<select id="company"><option value="">Todas</option></select></label>
+      <label>Tema<select id="category"><option value="">Todos</option></select></label>
+      <label>Fonte<select id="source"><option value="">Todas</option></select></label>
+      <label>Origem<select id="origin"><option value="">Todas</option></select></label>
+      <label>Relevância<select id="relevance"><option value="">Todas</option></select></label>
+      <label>Score mínimo<input id="score" type="number" min="0" max="100" value="0"></label>
+    </div>
+  </div>
+
+  <main>
+    <div class="page-head"><h1 id="page-title">Início</h1><p id="page-subtitle"></p></div>
+    <section id="content"></section>
+  </main>
+
+  <div id="tooltip" class="tooltip" role="status" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>

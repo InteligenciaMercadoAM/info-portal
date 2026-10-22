@@ -153,54 +153,14 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # COMMAND ----------
 
+# MAGIC %run ./indicadores_portal
+
+# COMMAND ----------
+
 # ===================== PARÂMETROS DA COLETA =====================
-# Lista oficial: planilha indicadores_4i_correspondencia_6.xlsx (docs/), aba objetivo, 'entra no portal' = Sim.
-# Ao incluir/tirar indicador aqui, atualize também o INDICADORES_PORTAL do Export e o indicadores_nomes do config.json.
-# Deixe None pra baixar o catálogo inteiro (demora horas).
-LISTA_INDICADORES = [
-    'BRGDP0002',  # PIB total
-    'BRGDP0017',  # PIB Indústria
-    'BRGDP0019',  # PIB Transformação
-    'BRGDP0021',  # PIB Construção
-    'BRGDP0013',  # PIB FBKF
-    'BRIND0001',  # Indústria Geral
-    'BRIND0003',  # Indústrias de Transformação
-    'BRIND0023',  # Fabricação de Máquinas e Equipamentos
-    'BRIND0029',  # Bens de Capital
-    'BRIND0368',  # Produção de Linha Branca
-    'BRIND0420',  # Insumos da Construção
-    'BRLDG0054',  # ICEI - Índice de Confiança do Empresário Industrial
-    'BRIND0445',  # Produção de Motocicletas - Total
-    'BRIND0055',  # Produção de Veículos - Total (Anfavea; substitui BRIND0446, descontinuado em dez/20)
-    'BRIND0070',  # Produção de Caminhões - Total
-    'BRIND0075',  # Produção de Ônibus - Total
-    'BRRTL0053',  # Licenciamento - Total
-    'BRRTL0062',  # Licenciamento de Caminhões - Total
-    'BRRTL0065',  # Licenciamento de Ônibus - Total
-    'BRIND1015',  # ICIA - Índice de Confiança da Indústria do Aço
-    'BRRTL0249',  # Unidades Lançadas - Todos os Empreendimentos
-    'BRRTL0250',  # Unidades Lançadas - Médio e Alto Padrão MAP
-    'BRRTL0251',  # Unidades Lançadas - Programa Casa Verde e Amarela CVA
-    'BRRTL0253',  # Unidades Vendidas - Todos os Empreendimentos
-    'BRRTL0254',  # Unidades Vendidas - Médio e Alto Padrão MAP
-    'BRRTL0255',  # Unidades Vendidas - Programa Casa Verde e Amarela CVA
-    'BRRLE0007',  # Secovi SP - Vendas de Imóveis Residenciais Novos
-    'BRRLE0010',  # Secovi SP - Lançamentos Residenciais
-    'BRIND0125',  # Vendas de Cimento - Total
-    'BREMP0059',  # Taxa de Participação na Força de Trabalho
-    'BRLDG0003',  # FGV - Índice de Confiança do Consumidor
-    'BRLDG0002',  # FGV - Índice de Confiança da Indústria (ICI)
-    'BRLDG0034',  # FGV ICSTV - Índice de Confiança da Construção
-    'BRGDP0001',  # IBC-Br - Índice de Atividade do Banco Central
-    'BRFXR0032',  # Dólar Comercial - PTAX Média Mensal, Compra (R$/US$)
-    'BRPRC0046',  # Inflação (IPCA)
-    'BRPRC0033',  # INCC-M Índice Nacional de Custo da Construção
-    'BRPRC0035',  # INCC-M Mão de Obra
-    'BRPRC0034',  # INCC-M Materiais, Equipamentos e Serviços
-    'BRPRC0024',  # IGPM - Índice Geral de Preços do Mercado
-    'BRSTK0005',  # IBOVESPA - Fechamento Mensal
-    'BRINR0012',  # Selic a.a.
-]
+# A lista oficial (código, nome, nível ou variação, com ou sem projeção) fica no notebook indicadores_portal,
+# que veio com o %run acima. Ele é a única fonte: o Export usa a mesma lista. Mexa só lá.
+LISTA_INDICADORES = [i["code"] for i in INDICADORES]
 
 # Alternativa: ler a lista de uma tabela (coluna indicator_code). Se preencher, tem prioridade sobre a lista acima.
 TABELA_LISTA = None   # ex.: "lcb_qas_sandbox2_comercial.isabela_pereira.lista_indicadores_4i"
@@ -244,6 +204,14 @@ ja_baixados = set()
 # stage antigo (sem a coluna 'tipo') não serve mais: apaga pra começar do zero
 if spark.catalog.tableExists(TABELA_STAGE) and 'tipo' not in spark.table(TABELA_STAGE).columns:
     spark.sql(f"DROP TABLE {TABELA_STAGE}")
+
+# stage de uma rodada com a regra antiga (tudo em variação) também não serve: série em nível tem que terminar em L
+if spark.catalog.tableExists(TABELA_STAGE):
+    _incoerentes = sorted({r[0] for r in spark.table(TABELA_STAGE).select("indicator_code", "serie_code").distinct().collect()
+                           if TIPO_SERIE.get(r[0]) == "#" and not str(r[1]).split(" ")[0].endswith("L")})
+    if _incoerentes:
+        print("Stage com série de variação em indicador de nível (regra antiga), começando do zero:", _incoerentes)
+        spark.sql(f"DROP TABLE {TABELA_STAGE}")
 
 if RETOMAR and spark.catalog.tableExists(TABELA_STAGE):
     ja_baixados = {r[0] for r in spark.table(TABELA_STAGE).select("indicator_code").distinct().collect()}
@@ -311,54 +279,87 @@ def _baixar_paginado(url):
     return dados, r
 
 
-def _serie_da_projecao(indicador):
-    """Série da projeção padrão (default + active). Usar a mesma série no realizado garante que
-    as duas linhas do gráfico tenham a mesma unidade/transformação. None se não houver projeção."""
+def _series_com_projecao(indicador):
+    """Códigos das séries do indicador que têm projeção ativa na 4i (a padrão primeiro). Vazio se não tiver ou se a chamada falhar."""
     r = _get(f"{FS}/indicators/{indicador}/projections/metadata")
     if r.status_code != 200:
-        return None
-    projs = r.json().get('data') or []
-    ativas = [x for x in projs if x.get('status', 'active') == 'active']
-    padrao = [x for x in ativas if x.get('is_default')] or ativas
-    return padrao[0].get('series_code') if padrao else None
+        return []
+    projs = [x for x in (r.json().get('data') or []) if x.get('status', 'active') == 'active' and x.get('series_code')]
+    projs.sort(key=lambda x: not x.get('is_default'))
+    return [x['series_code'] for x in projs]
 
 
-# ----- Regra de série do portal (definida em 19/10/2026) -----
+# ----- Regra de série do portal (planilha de correspondência, coluna Unidade; 22/10/2026) -----
 # Código da série 4i: <indicador>000<ajuste><agregação><frequência><transformação>, ex.: BRPRC0033000SOMM.
-# Transformação "M" = variação contra o período anterior (% m/m nos mensais, % t/t nos trimestrais).
-# Entre as séries "M", preferimos: maior frequência, depois dessazonalizada (S), depois as demais.
-PREF_FREQ, PREF_AJUSTE, PREF_AGREG = "MQY", "SWOR", "OAES"
+# Transformação "L" = nível (o número do indicador). "M" = variação contra o período anterior (% m/m, % t/t).
+# TIPO_SERIE (do indicadores_portal): "#" -> série em nível (L); "var" -> série de variação (M).
+# Sempre com projeção: entre as séries do tipo certo, vence a que tem projeção na 4i. Se só a do outro tipo tiver,
+# usamos ela e convertemos (variação calculada a partir do nível, ou nível encadeado a partir da variação).
+# Desempate: maior frequência; no nível prefere a série original (O), na variação a dessazonalizada (S).
+PREF_FREQ, PREF_AGREG = "MQY", "OAES"
+PREF_AJUSTE = {"#": "OSWR", "var": "SWOR"}
 SERIE_FORCADA = {}   # para travar uma série específica: {"BRGDP0002": "BRGDP0002000WOQM"}
 
-def _rank(codigo):
+def _rank(codigo, tipo, com_proj=()):
     suf = codigo[-4:]
     pos = lambda ordem, c: ordem.index(c) if c in ordem else len(ordem)
-    return (pos(PREF_FREQ, suf[2]), pos(PREF_AJUSTE, suf[0]), pos(PREF_AGREG, suf[1]))
+    return (codigo not in com_proj, pos(PREF_FREQ, suf[2]), pos(PREF_AJUSTE[tipo], suf[0]), pos(PREF_AGREG, suf[1]))
 
-def _escolher_serie(codigos):
-    """Devolve (série, calcular_variação)."""
+def _melhor(codigos, transf, tipo, com_proj=()):
+    c = sorted([x for x in codigos if x.endswith(transf)], key=lambda x: _rank(x, tipo, com_proj))
+    return c[0] if c else None
+
+def _par(codigo, codigos, transf):
+    """Série 'irmã' de outra transformação, com o mesmo ajuste/agregação/frequência (ex.: ...SOMM <-> ...SOML)."""
+    alvo = codigo[:-1] + transf
+    return alvo if alvo in codigos else None
+
+def _escolher_series(indicador, codigos, tipo, com_proj):
+    """Devolve (série do realizado, série da projeção, conversão), conversão em {None, 'var_de_nivel', 'nivel_de_var'}."""
     codigos = [c for c in codigos if c]
-    ind = codigos[0][:9] if codigos else ""
-    if ind in SERIE_FORCADA:
-        return SERIE_FORCADA[ind], False
-    var = sorted([c for c in codigos if c.endswith("M")], key=_rank)
-    if var:
-        return var[0], False
-    nivel = sorted([c for c in codigos if c.endswith("L")], key=_rank)
-    if nivel:
-        return nivel[0], True
-    return (codigos[0], False) if codigos else (None, False)
+    if indicador in SERIE_FORCADA:
+        return SERIE_FORCADA[indicador], SERIE_FORCADA[indicador], None
+    alvo, outro = ("L", "M") if tipo == "#" else ("M", "L")
+    certa = _melhor(codigos, alvo, tipo, com_proj)
+    if certa and certa in com_proj:
+        return certa, certa, None                                   # caso normal: série do tipo certo, com projeção
+    trocada = _melhor([c for c in codigos if c in com_proj], outro, tipo, com_proj)
+    if tipo == "var" and trocada:
+        return trocada, trocada, "var_de_nivel"                     # só o nível tem projeção: calcula a variação
+    if tipo == "#" and trocada:
+        real = _par(trocada, codigos, "L") or certa
+        if real:
+            return real, trocada, "nivel_de_var"                    # só a variação tem projeção: encadeia a partir do último nível
+    if certa:
+        return certa, certa, None                                   # sem projeção em lugar nenhum (ou metadata indisponível)
+    nivel = _melhor(codigos, "L", tipo)
+    if tipo == "var" and nivel:
+        return nivel, nivel, "var_de_nivel"                         # não existe série M: calcula a partir do nível
+    return (codigos[0], codigos[0], None) if codigos else (None, None, None)
+
+def _limpa(lista):
+    return sorted({str(p["date"])[:10]: float(p["value"]) for p in lista if p.get("value") is not None and p.get("date")}.items())
 
 def _variacao(obs, proj):
     """Variação % contra o período anterior, calculada sobre realizado + projeção em sequência."""
-    def limpa(lista):
-        return sorted({str(p["date"])[:10]: float(p["value"]) for p in lista if p.get("value") is not None and p.get("date")}.items())
-    o, p = limpa(obs), limpa(proj)
+    o, p = _limpa(obs), _limpa(proj)
     ultimo = o[-1][0] if o else ""
     todos = o + [x for x in p if x[0] > ultimo]
     var = [{"date": todos[i][0], "value": (todos[i][1] / todos[i - 1][1] - 1) * 100}
            for i in range(1, len(todos)) if todos[i - 1][1]]
     return [x for x in var if x["date"] <= ultimo], [x for x in var if x["date"] > ultimo]
+
+def _nivel_projetado(obs_nivel, proj_var):
+    """Projeção em nível: parte do último nível realizado e aplica as variações % projetadas em sequência."""
+    o = _limpa(obs_nivel)
+    if not o:
+        return []
+    ultimo, nivel, saida = o[-1][0], o[-1][1], []
+    for d, v in _limpa(proj_var):
+        if d > ultimo:
+            nivel = nivel * (1 + v / 100)
+            saida.append({"date": d, "value": nivel})
+    return saida
 
 
 def _formatar(dados, indicador, serie_code, tipo):
@@ -395,28 +396,35 @@ def consulta_dados(listaind):
                 raise LookupError('sem série')
             codigos_series = [x.get('code') for x in series]
 
-            # série: regra do portal (variação contra o período anterior), a MESMA no realizado e na projeção
-            serie_code, calcular = _escolher_serie(codigos_series)
+            # série: regra do portal (nível ou variação, conforme a planilha), dando preferência à que tem projeção
+            tipo = TIPO_SERIE.get(indicador_selected, "var")
+            sem_proj = indicador_selected in SEM_PROJECAO
+            com_proj = [] if sem_proj else _series_com_projecao(indicador_selected)
+            serie_code, serie_proj, conversao = _escolher_series(indicador_selected, codigos_series, tipo, com_proj)
             if serie_code is None:
                 raise LookupError('sem série')
-            base = f"{FS}/indicators/{indicador_selected}/series/{serie_code}"
 
             # 2) realizado
-            dados, r = _baixar_paginado(f"{base}/observations")
+            dados, r = _baixar_paginado(f"{FS}/indicators/{indicador_selected}/series/{serie_code}/observations")
             if not dados:
                 log_erros.append({'indicador': indicador_selected, 'etapa': 'observations', 'status': r.status_code, 'motivo': 'sem observações'})
                 continue
 
-            # 3) projeção da mesma série. Vazio = indicador sem projeção na 4i, não é erro
-            dados_p, r = _baixar_paginado(f"{base}/projections")
-            if not dados_p:
-                log_erros.append({'indicador': indicador_selected, 'etapa': 'projections', 'status': r.status_code, 'motivo': f'sem projeção na série {serie_code}'})
+            # 3) projeção. Vazio = indicador sem projeção na 4i, não é erro
+            dados_p = []
+            if not sem_proj:
+                dados_p, r = _baixar_paginado(f"{FS}/indicators/{indicador_selected}/series/{serie_proj}/projections")
+                if not dados_p:
+                    log_erros.append({'indicador': indicador_selected, 'etapa': 'projections', 'status': r.status_code, 'motivo': f'sem projeção na série {serie_proj}'})
 
-            if calcular:
-                # não existe série de variação pronta: calcula a partir do nível (realizado + projeção juntos)
+            if conversao == "var_de_nivel":
                 dados, dados_p = _variacao(dados, dados_p)
+                log_erros.append({'indicador': indicador_selected, 'etapa': 'serie', 'status': None, 'motivo': f'variação calculada a partir do nível {serie_code}'})
                 serie_code = f"{serie_code} (var. calculada)"
-                log_erros.append({'indicador': indicador_selected, 'etapa': 'serie', 'status': None, 'motivo': f'sem série M; variação calculada de {serie_code}'})
+            elif conversao == "nivel_de_var":
+                dados_p = _nivel_projetado(dados, dados_p)
+                log_erros.append({'indicador': indicador_selected, 'etapa': 'serie', 'status': None, 'motivo': f'projeção em nível encadeada a partir de {serie_proj}'})
+                serie_code = f"{serie_code} (proj. de {serie_proj})"
 
             if dados:
                 partes.append(_formatar(dados, indicador_selected, serie_code, 'realizado'))
@@ -475,6 +483,13 @@ print('Com realizado:', len(baixados), 'de', len(lista_ind))
 print('Com projeção:', len(com_proj), 'de', len(lista_ind))
 print('Sem realizado:', sorted(set(lista_ind) - baixados))
 print('Sem projeção:', sorted(set(lista_ind) - com_proj))
+# Conferência da regra da planilha: '#' tem que vir em nível (série terminando em L) e 'var' em variação (M ou calculada)
+for r in df_stage.select('indicator_code', 'serie_code').distinct().collect():
+    tipo, serie = TIPO_SERIE.get(r[0]), str(r[1])
+    ok = serie.split(' ')[0].endswith('L') if tipo == '#' else (serie.endswith('M') or 'var. calculada' in serie)
+    if not ok:
+        print(f"⚠️ {r[0]}: planilha pede {'nível' if tipo == '#' else 'variação'}, mas a série usada foi {serie}")
+print('Pediram pra ficar sem projeção:', sorted(SEM_PROJECAO))
 if log_erros:
     display(pd.DataFrame(log_erros).drop_duplicates())
 

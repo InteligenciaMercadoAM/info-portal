@@ -21,7 +21,7 @@
 # ===================== CONFIGURAÇÃO =====================
 GITHUB_REPO   = "InteligenciaMercadoAM/info-portal"
 GITHUB_BRANCH = "main"
-GITHUB_DATA_PATH = "info-portal/public/data"  # pasta dos JSONs dentro do repositório
+GITHUB_DATA_PATH = "public/data"  # pasta dos JSONs dentro do repositório (desde 21/10 o repo não tem mais a subpasta info-portal/)
 SECRET_SCOPE, SECRET_KEY = "portal-im", "github-token"   # token do GitHub com permissão Contents: read/write
 
 # Pasta do pipeline de notícias do Infomet no workspace (onde estão 01_stage_ingestion, 02_raw, 03_silver, 04_gold...)

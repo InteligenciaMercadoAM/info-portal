@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "6"
+# ///
 import requests
 import pandas as pd
 import time
@@ -513,4 +517,3 @@ print('Projeções gravadas em', TABELA_PROJ, '|', df_proj.count(), 'linhas')
 
 # Rodada completa e gravada: limpa o stage pra próxima vez começar do zero
 spark.sql(f"DROP TABLE IF EXISTS {TABELA_STAGE}")
-

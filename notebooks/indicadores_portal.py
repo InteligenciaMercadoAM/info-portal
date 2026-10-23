@@ -77,7 +77,4 @@ assert len(_codes) == len(set(_codes)), f"código repetido em INDICADORES: {sort
 assert all(i["serie"] in ("#", "var") for i in INDICADORES), "serie tem que ser '#' (nível) ou 'var' (variação)"
 TIPO_SERIE = {i["code"]: i["serie"] for i in INDICADORES}                       # code -> '#' ou 'var'
 SEM_PROJECAO = {i["code"] for i in INDICADORES if i.get("projecao") is False}    # não baixa/mostra projeção
-<<<<<<< HEAD
 
-=======
->>>>>>> origin/main

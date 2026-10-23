@@ -5,6 +5,12 @@
 # MAGIC Gera os arquivos do Portal IM em `public/data/`:
 # MAGIC `feed.json` (bot + projetos piloto), `feed_automotivo.json` (piloto automotivo), `manual.json` (notícias e alertas da equipe), `resumo.json`, `meta.json`, `distinct.json` e `indicadores.json` (este lê a tabela gerada pelo notebook `novoind_4_Intelligence`, que precisa rodar antes).
 # MAGIC No fim monta a mensagem diária do Teams.
+# MAGIC
+# MAGIC **Rode num cluster, não no serverless.**
+
+# COMMAND ----------
+
+# MAGIC %run ./indicadores_portal
 
 # COMMAND ----------
 
@@ -22,66 +28,24 @@ EXPORT_DAYS = 90  # quantos dias de notícias exportar
 AUTOMOTIVO_TABLE = "hive_metastore.default.noticias_automotivebusiness_arcelormittal"
 AUTOMOTIVO_FONTES = ["automotivebusiness", "autodata"]   # o volume de keywords do LinkedIn fica de fora
 AUTOMOTIVO_RELEVANTES = ["Alta"]                          # o que vira "Relevante" no portal; inclua "Média" para mais volume
-OUTPUT_DIR = "/Workspace/Users/isabela.pereira@arcelormittal.com.br/portal-im/info-portal/public/data"
+OUTPUT_DIR = "/Workspace/Users/isabela.pereira@arcelormittal.com.br/info-portal/public/data"   # tem que ser igual ao OUTPUT_DIR do 00_atualizar_portal
 CONFIG_PATH = OUTPUT_DIR.rsplit("/", 1)[0] + "/config.json"
 PORTAL_URL = "https://SEU-SITE.netlify.app"
 
 # Tabelas geradas pelo notebook novoind_4_Intelligence (TABELA_FINAL e TABELA_PROJ de lá). Se o nome mudar lá, mude aqui também.
 INDICADORES_TABLE = "lcb_qas_sandbox2_comercial.isabela_pereira.indicadores_lt_20260113"
 INDICADORES_PROJ_TABLE = "lcb_qas_sandbox2_comercial.isabela_pereira.indicadores_lt_20260113_projecoes"
-# Regra do portal (19/10/2026): todas as séries são variação contra o período anterior. Unidade exibida por frequência:
+# Regra do portal (planilha, coluna Unidade): "var" = variação contra o período anterior, unidade pela frequência;
+# "#" = série em nível, unidade e casas decimais vindas do indicadores_portal.
 UNIDADE_POR_FREQ = {"Mensal": "% m/m", "Trimestral": "% t/t", "Semestral": "% s/s", "Anual": "% a/a"}
 
 # Como cada indicador da 4intelligence aparece no portal. A chave é o indicator_code.
-# Tudo é opcional: o que faltar é deduzido (nome e fonte do catálogo, frequência pela série, setor "Macroeconomia", polaridade 1).
-# Campos aceitos: id, nome, setor, regiao, unidade, casas (decimais), polaridade (1 = alta é bom, -1 = alta é ruim),
+# Vem da lista oficial do notebook indicadores_portal (%run acima): nome = coluna name da planilha, setor, fonte, polaridade,
+# tipo de série ("#" ou "var"), unidade/casas das séries em nível e se mostra projeção. Mexa só lá.
+# Campos aceitos (opcionais): id, nome, setor, regiao, unidade, casas (decimais), polaridade (1 = alta é bom, -1 = alta é ruim),
 #                 limiar_estavel, destaque, fonte_original, proxima_divulgacao (AAAA-MM-DD), referencia_proxima.
 # O "id" é o que o config.json do portal usa em "indicadores_fixos" e "indicadores_nomes" (aqui, o próprio código 4i).
-# Lista oficial: docs/indicadores_4i_correspondencia_6.xlsx. Ao incluir/tirar indicador, mexa aqui, no LISTA_INDICADORES do novoind e no config.json.
-INDICADORES_PORTAL = {
-    "BRGDP0002": {"id": "BRGDP0002", "nome": "PIB total", "setor": "Macroeconomia", "fonte_original": "IBGE"},
-    "BRGDP0017": {"id": "BRGDP0017", "nome": "PIB Indústria", "setor": "Indústria", "fonte_original": "IBGE"},
-    "BRGDP0019": {"id": "BRGDP0019", "nome": "PIB Transformação", "setor": "Indústria", "fonte_original": "IBGE"},
-    "BRGDP0021": {"id": "BRGDP0021", "nome": "PIB Construção", "setor": "Construção civil", "fonte_original": "IBGE"},
-    "BRGDP0013": {"id": "BRGDP0013", "nome": "PIB FBKF", "setor": "Macroeconomia", "fonte_original": "IBGE"},
-    "BRIND0001": {"id": "BRIND0001", "nome": "Indústria Geral", "setor": "Indústria", "fonte_original": "IBGE"},
-    "BRIND0003": {"id": "BRIND0003", "nome": "Indústrias de Transformação", "setor": "Indústria", "fonte_original": "IBGE"},
-    "BRIND0023": {"id": "BRIND0023", "nome": "Fabricação de Máquinas e Equipamentos", "setor": "Indústria", "fonte_original": "IBGE"},
-    "BRIND0029": {"id": "BRIND0029", "nome": "Bens de Capital", "setor": "Indústria", "fonte_original": "IBGE"},
-    "BRIND0368": {"id": "BRIND0368", "nome": "Produção de Linha Branca", "setor": "Indústria", "fonte_original": "IBGE"},
-    "BRIND0420": {"id": "BRIND0420", "nome": "Insumos da Construção", "setor": "Construção civil", "fonte_original": "IBGE"},
-    "BRLDG0054": {"id": "BRLDG0054", "nome": "ICEI - Índice de Confiança do Empresário Industrial", "setor": "Indústria", "fonte_original": "CNI"},
-    "BRIND0445": {"id": "BRIND0445", "nome": "Produção de Motocicletas - Total", "setor": "Automotivo", "fonte_original": "ABRACICLO"},
-    "BRIND0055": {"id": "BRIND0055", "nome": "Produção de Veículos - Total", "setor": "Automotivo", "fonte_original": "Anfavea"},
-    "BRIND0070": {"id": "BRIND0070", "nome": "Produção de Caminhões - Total", "setor": "Automotivo", "fonte_original": "Anfavea"},
-    "BRIND0075": {"id": "BRIND0075", "nome": "Produção de Ônibus - Total", "setor": "Automotivo", "fonte_original": "Anfavea"},
-    "BRRTL0053": {"id": "BRRTL0053", "nome": "Licenciamento - Total", "setor": "Automotivo", "fonte_original": "Anfavea"},
-    "BRRTL0062": {"id": "BRRTL0062", "nome": "Licenciamento de Caminhões - Total", "setor": "Automotivo", "fonte_original": "Anfavea"},
-    "BRRTL0065": {"id": "BRRTL0065", "nome": "Licenciamento de Ônibus - Total", "setor": "Automotivo", "fonte_original": "Anfavea"},
-    "BRIND1015": {"id": "BRIND1015", "nome": "ICIA - Índice de Confiança da Indústria do Aço", "setor": "Siderurgia", "fonte_original": "Instituto Aço Brasil"},
-    "BRRTL0249": {"id": "BRRTL0249", "nome": "Unidades Lançadas - Todos os Empreendimentos", "setor": "Construção civil", "fonte_original": "Abrainc/Fipe"},
-    "BRRTL0250": {"id": "BRRTL0250", "nome": "Unidades Lançadas - Médio e Alto Padrão MAP", "setor": "Construção civil", "fonte_original": "Abrainc/Fipe"},
-    "BRRTL0251": {"id": "BRRTL0251", "nome": "Unidades Lançadas - Programa Casa Verde e Amarela CVA", "setor": "Construção civil", "fonte_original": "Abrainc/Fipe"},
-    "BRRTL0253": {"id": "BRRTL0253", "nome": "Unidades Vendidas - Todos os Empreendimentos", "setor": "Construção civil", "fonte_original": "Abrainc/Fipe"},
-    "BRRTL0254": {"id": "BRRTL0254", "nome": "Unidades Vendidas - Médio e Alto Padrão MAP", "setor": "Construção civil", "fonte_original": "Abrainc/Fipe"},
-    "BRRTL0255": {"id": "BRRTL0255", "nome": "Unidades Vendidas - Programa Casa Verde e Amarela CVA", "setor": "Construção civil", "fonte_original": "Abrainc/Fipe"},
-    "BRRLE0007": {"id": "BRRLE0007", "nome": "Secovi SP - Vendas de Imóveis Residenciais Novos", "setor": "Construção civil", "fonte_original": "Secovi"},
-    "BRRLE0010": {"id": "BRRLE0010", "nome": "Secovi SP - Lançamentos Residenciais", "setor": "Construção civil", "fonte_original": "Secovi"},
-    "BRIND0125": {"id": "BRIND0125", "nome": "Vendas de Cimento - Total", "setor": "Construção civil", "fonte_original": "SNIC"},
-    "BREMP0059": {"id": "BREMP0059", "nome": "Taxa de Participação na Força de Trabalho", "setor": "Macroeconomia", "fonte_original": "IBGE"},
-    "BRLDG0003": {"id": "BRLDG0003", "nome": "FGV - Índice de Confiança do Consumidor", "setor": "Macroeconomia", "fonte_original": "FGV"},
-    "BRLDG0002": {"id": "BRLDG0002", "nome": "FGV - Índice de Confiança da Indústria (ICI)", "setor": "Indústria", "fonte_original": "FGV"},
-    "BRLDG0034": {"id": "BRLDG0034", "nome": "FGV ICSTV - Índice de Confiança da Construção", "setor": "Construção civil", "fonte_original": "FGV"},
-    "BRGDP0001": {"id": "BRGDP0001", "nome": "IBC-Br - Índice de Atividade do Banco Central", "setor": "Macroeconomia", "fonte_original": "Banco Central do Brasil"},
-    "BRFXR0032": {"id": "BRFXR0032", "nome": "Dólar Comercial - PTAX Média Mensal, Compra (R$/US$)", "setor": "Macroeconomia", "fonte_original": "Banco Central do Brasil"},
-    "BRPRC0046": {"id": "BRPRC0046", "nome": "Inflação (IPCA)", "setor": "Macroeconomia", "fonte_original": "IBGE", "polaridade": -1},
-    "BRPRC0033": {"id": "BRPRC0033", "nome": "INCC-M Índice Nacional de Custo da Construção", "setor": "Construção civil", "fonte_original": "FGV", "polaridade": -1},
-    "BRPRC0035": {"id": "BRPRC0035", "nome": "INCC-M Mão de Obra", "setor": "Construção civil", "fonte_original": "FGV", "polaridade": -1},
-    "BRPRC0034": {"id": "BRPRC0034", "nome": "INCC-M Materiais, Equipamentos e Serviços", "setor": "Construção civil", "fonte_original": "FGV", "polaridade": -1},
-    "BRPRC0024": {"id": "BRPRC0024", "nome": "IGPM - Índice Geral de Preços do Mercado", "setor": "Macroeconomia", "fonte_original": "FGV", "polaridade": -1},
-    "BRSTK0005": {"id": "BRSTK0005", "nome": "IBOVESPA - Fechamento Mensal", "setor": "Macroeconomia", "fonte_original": "B3"},
-    "BRINR0012": {"id": "BRINR0012", "nome": "Selic a.a.", "setor": "Macroeconomia", "fonte_original": "Banco Central do Brasil", "polaridade": -1},
-}
+INDICADORES_PORTAL = {i["code"]: {"id": i["code"], **{k: v for k, v in i.items() if k != "code"}} for i in INDICADORES}
 SETOR_PADRAO_INDICADOR = "Macroeconomia"
 # Quantos pontos mandar ao gráfico: (últimos realizados, primeiras projeções) por frequência. A série completa deixaria o gráfico ilegível.
 JANELA_SERIE = {"Diária": (90, 30), "Semanal": (52, 12), "Mensal": (24, 12), "Trimestral": (12, 6), "Semestral": (8, 4), "Anual": (8, 3)}
@@ -90,7 +54,7 @@ JANELA_SERIE = {"Diária": (90, 30), "Semanal": (52, 12), "Mensal": (24, 12), "T
 PUSH_TO_GITHUB = False
 GITHUB_REPO = "InteligenciaMercadoAM/info-portal"
 GITHUB_BRANCH = "main"
-GITHUB_DATA_PATH = "info-portal/public/data"  # pasta dos JSONs dentro do repositório
+GITHUB_DATA_PATH = "public/data"  # pasta dos JSONs dentro do repositório (desde 21/10 o repo não tem mais a subpasta info-portal/)
 SECRET_SCOPE, SECRET_KEY = "portal-im", "github-token"  # token com permissão Contents: read/write
 
 # Mensagem diária no Teams (opcional): URL do fluxo "Workflows" do canal, guardada em secret
@@ -269,6 +233,11 @@ def _periodo(d, freq):
     if freq == "Anual":      return str(d.year)
     return d.strftime("%d/%m/%y")
 
+def _casas_auto(real):
+    """Casas decimais pra série em nível sem 'casas' definido: números grandes sem decimal."""
+    m = abs(real[-1][1])
+    return 0 if m >= 1000 else 1 if m >= 10 else 2
+
 def montar_indicador(code, meta, obs, hoje, mapa, proj=None):
     """meta: campos do catálogo; obs: realizado [(date, valor)] ordenado; proj: projeção 4i [(date, valor)] da mesma série;
     mapa: ajustes do INDICADORES_PORTAL para este código."""
@@ -279,6 +248,8 @@ def montar_indicador(code, meta, obs, hoje, mapa, proj=None):
     # Projeção vem da tabela de projeções (TABELA_PROJ do novoind). Só entra o que for depois do último realizado.
     ultimo = real[-1][0]
     proj = [(d, v) for d, v in (proj or []) if d is not None and v is not None and d > ultimo]
+    if mapa.get("projecao") is False:
+        proj = []                                  # planilha pediu pra tirar a projeção (ex.: Dólar)
     n_real, n_proj = JANELA_SERIE.get(freq, (24, 12))
     serie = [{"periodo": _periodo(d, freq), "valor": round(v, 4), "tipo": "realizado"} for d, v in real[-n_real:]]
     serie += [{"periodo": _periodo(d, freq), "valor": round(v, 4), "tipo": "projecao"} for d, v in proj[:n_proj]]
@@ -295,8 +266,8 @@ def montar_indicador(code, meta, obs, hoje, mapa, proj=None):
         "fonte": "4intelligence",
         "fonte_original": mapa.get("fonte_original") or (meta.get("source") or "").strip() or None,
         # "updated_at" do catálogo é a data de atualização do cadastro na 4i, não a divulgação do dado: não vai pro portal
-        "unidade": mapa.get("unidade") or UNIDADE_POR_FREQ.get(freq, "%"),
-        "casas": mapa.get("casas", 1),
+        "unidade": mapa.get("unidade") if mapa.get("serie") == "#" else (mapa.get("unidade") or UNIDADE_POR_FREQ.get(freq, "%")),
+        "casas": mapa.get("casas", _casas_auto(real) if mapa.get("serie") == "#" else 1),
         "serie": serie,
     }
     for k in ["limiar_estavel", "destaque", "proxima_divulgacao", "referencia_proxima"]:
@@ -334,7 +305,13 @@ else:
 
 hoje = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
 itens, sem_dados = [], []
+fora_da_lista = sorted(set(catalogo) - set(INDICADORES_PORTAL))
+if fora_da_lista:
+    print("Na tabela mas fora da lista oficial (não vão pro portal):", fora_da_lista)
+sem_dados += sorted(set(INDICADORES_PORTAL) - set(catalogo))
 for code, meta_ind in catalogo.items():   # não usar o nome "meta": ele é o meta.json, usado na mensagem do Teams
+    if code not in INDICADORES_PORTAL:
+        continue
     it = montar_indicador(code, meta_ind, series.get(code, []), hoje, INDICADORES_PORTAL.get(code, {}), projecoes.get(code, []))
     (itens.append(it) if it else sem_dados.append(code))
 
@@ -350,12 +327,18 @@ fixos_ausentes = [f for f in _fixos if str(f).lower() not in {str(i).lower() for
 if fixos_ausentes:
     print("⚠️ 'indicadores_fixos' do config.json sem indicador correspondente (o portal usa os marcados com destaque no lugar):", fixos_ausentes)
 
+_nomes_cfg = {str(k).upper(): v for k, v in cfg.get("indicadores_nomes", {}).items()}
+_diverge = [c for c, m in INDICADORES_PORTAL.items() if _nomes_cfg.get(c) != m.get("nome")]
+if _diverge or set(_nomes_cfg) - set(INDICADORES_PORTAL):
+    print("⚠️ indicadores_nomes do config.json diferente do indicadores_portal (o site usa o do config):",
+          _diverge + sorted(set(_nomes_cfg) - set(INDICADORES_PORTAL)))
+
 itens.sort(key=lambda i: i["nome"].lower())
 write_json("indicadores.json", {"atualizado_em": datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%Y-%m-%d %H:%M:%S"), "indicadores": itens})
 print(f"✅ indicadores.json: {len(itens)} indicadores, {sum(len(i['serie']) for i in itens)} pontos")
 for i in itens:
     real = [p for p in i["serie"] if p["tipo"] == "realizado"]
-    print(f"   {i['id']}: {i['frequencia']} · último realizado {real[-1]['periodo'] if real else '-'} · {len(i['serie']) - len(real)} projeções")
+    print(f"   {i['id']} {i['nome'][:45]:<45} {i.get('unidade') or '(sem unidade)':<9} · último {real[-1]['periodo'] if real else '-'} = {real[-1]['valor'] if real else '-'} · {len(i['serie']) - len(real)} projeções")
 
 
 # COMMAND ----------

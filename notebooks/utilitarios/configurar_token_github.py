@@ -37,7 +37,7 @@ r = requests.get("https://api.github.com/repos/InteligenciaMercadoAM/info-portal
 print("Acesso ao repositório:", "OK" if r.ok else f"falhou (HTTP {r.status_code}): {r.text[:200]}")
 if r.ok:
     # confere se a pasta de dados está onde o 00_atualizar_portal espera (GITHUB_DATA_PATH)
-    for pasta in ["info-portal/public/data", "public/data"]:
+    for pasta in ["public/data", "info-portal/public/data"]:
         rr = requests.get(f"https://api.github.com/repos/InteligenciaMercadoAM/info-portal/contents/{pasta}",
                           headers={"Authorization": f"Bearer {dbutils.secrets.get(SCOPE, KEY)}"}, timeout=30)
         if rr.ok:
@@ -46,3 +46,4 @@ if r.ok:
     else:
         print("Não achei public/data no repositório: confira o GITHUB_DATA_PATH.")
 dbutils.widgets.remove("token_github")
+

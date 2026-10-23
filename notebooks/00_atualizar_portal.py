@@ -1,8 +1,9 @@
 # Databricks notebook source
 # MAGIC %md
 # MAGIC # Atualizar Portal IM
-# MAGIC **É só este notebook que roda (na mão ou agendado).** Ele faz tudo em ordem:
-# MAGIC 1. **Infomet:** scraping → raw → silver → gold → classificação com o prompt do Infomet (`tb_noticias_classificadas`)
+# MAGIC Faz, em ordem:
+# MAGIC 1. **Infomet** (desligado por padrão no `RODAR`): scraping → raw → silver → gold → classificação. Hoje isso já roda nos jobs
+# MAGIC    "1- Pipeline Medallion" e "2- Classifica + Envia Teams", que também mandam as notícias pro Teams.
 # MAGIC 2. **Automotivo:** scraping + classificação com o prompt automotivo (`noticias_automotivebusiness_arcelormittal`)
 # MAGIC 3. **4intelligence:** indicadores, realizado + projeção (`novoind_4_Intelligence...`)
 # MAGIC 4. **Export** dos JSONs do portal (notícias, piloto automotivo, conteúdo manual, indicadores)
@@ -12,20 +13,22 @@
 # MAGIC e o portal é publicado com o que deu certo. No fim, o notebook falha de propósito pra avisar
 # MAGIC (chega e-mail se estiver agendado). Notícias automotivas **não** vão pro Teams, só pro portal.
 # MAGIC
-# MAGIC **Pra agendar:** botão **Schedule** (canto superior direito) → diário, dias úteis, 6h30.
+# MAGIC **Rode num cluster, não no serverless.**
+# MAGIC
+# MAGIC **Pra agendar:** botão **Schedule** (canto superior direito) → diário, dias úteis, **depois** do horário em que o job "2- Classifica + Envia Teams" termina.
 # MAGIC Precisa rodar como a Isabela, porque o token da 4i fica na pasta dela.
-# MAGIC Se o Infomet já tiver um job próprio agendado, **desligue o antigo** pra não rodar duas vezes.
+# MAGIC Se um dia ligar o Infomet aqui, desligue os jobs 1 e 2, senão tudo roda duas vezes.
 
 # COMMAND ----------
 
 # ===================== CONFIGURAÇÃO =====================
 GITHUB_REPO   = "InteligenciaMercadoAM/info-portal"
 GITHUB_BRANCH = "main"
-GITHUB_DATA_PATH = "info-portal/public/data"  # pasta dos JSONs dentro do repositório
+GITHUB_DATA_PATH = "public/data"  # pasta dos JSONs dentro do repositório (desde 21/10 o repo não tem mais a subpasta info-portal/)
 SECRET_SCOPE, SECRET_KEY = "portal-im", "github-token"   # token do GitHub com permissão Contents: read/write
 
 # Pasta do pipeline de notícias do Infomet no workspace (onde estão 01_stage_ingestion, 02_raw, 03_silver, 04_gold...)
-PIPELINE_DIR = "/Workspace/Users/isabela.pereira@arcelormittal.com.br/PASTA_DO_PIPELINE"
+PIPELINE_DIR = "/Workspace/Users/isabela.pereira@arcelormittal.com.br/chatbot_v3 (final)/pipeline"
 
 # Cada fonte: lista de notebooks rodados em sequência (se um falhar, os seguintes da MESMA fonte não rodam).
 # (nome exibido, caminho, timeout em minutos)
@@ -35,7 +38,7 @@ FONTES = {
         ("raw",                     f"{PIPELINE_DIR}/02_raw/01_infomet_tb_raw_ingestion", 30),
         ("silver",                  f"{PIPELINE_DIR}/03_silver/01_tb_silver_creation", 30),
         ("gold",                    f"{PIPELINE_DIR}/04_gold/01_chunking_data_v1", 30),
-        ("classificação (prompt Infomet)", f"{PIPELINE_DIR}/Job - Classificação Relevância Notícias", 60),
+        ("classificação (prompt Infomet)", f"{PIPELINE_DIR}/Job - Classificacao Relevancia Noticias", 60),
     ],
     "Automotivo": [
         ("scraping + classificação (prompt automotivo)", "./Scraper_e_Classificacao_Noticias_Automotivas", 60),
@@ -44,12 +47,14 @@ FONTES = {
         ("indicadores (realizado + projeção)", "./novoind_4_Intelligence_isabela_ajustado_v3", 60),
     ],
 }
-RODAR = {"Infomet": True, "Automotivo": True, "4intelligence": True}   # False pula a fonte nesta rodada
+RODAR = {"Infomet": False, "Automotivo": True, "4intelligence": True}   # False pula a fonte nesta rodada
+# Infomet fica False porque os jobs "1- Pipeline Medallion" e "2- Classifica + Envia Teams" já fazem scraping e classificação.
+# Ligue só se esses jobs forem desligados, senão tudo roda duas vezes.
 
 NB_EXPORT = "./Export_Portal_Data (3)"
 
 # Onde o Export grava os JSONs (tem que ser o mesmo OUTPUT_DIR do Export)
-OUTPUT_DIR = "/Workspace/Users/isabela.pereira@arcelormittal.com.br/portal-im/info-portal/public/data"
+OUTPUT_DIR = "/Workspace/Users/isabela.pereira@arcelormittal.com.br/info-portal/public/data"
 ARQUIVOS = ["feed.json", "feed_automotivo.json", "manual.json", "resumo.json",
             "meta.json", "distinct.json", "indicadores.json"]
 

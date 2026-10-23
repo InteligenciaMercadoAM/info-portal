@@ -14,6 +14,10 @@
 
 # COMMAND ----------
 
+# MAGIC %run ./indicadores_portal
+
+# COMMAND ----------
+
 # Configuração
 TABLE = "lcb_qas_sandbox2_comercial.isabela_pereira.tb_noticias_classificadas"
 MANUAL_TABLE = "lcb_qas_sandbox2_comercial.isabela_pereira.tb_portal_conteudo_manual"

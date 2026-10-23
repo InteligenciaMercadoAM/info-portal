@@ -14,10 +14,6 @@
 
 # COMMAND ----------
 
-# MAGIC %run ./indicadores_portal
-
-# COMMAND ----------
-
 # Configuração
 TABLE = "lcb_qas_sandbox2_comercial.isabela_pereira.tb_noticias_classificadas"
 MANUAL_TABLE = "lcb_qas_sandbox2_comercial.isabela_pereira.tb_portal_conteudo_manual"
@@ -32,8 +28,11 @@ EXPORT_DAYS = 90  # quantos dias de notícias exportar
 AUTOMOTIVO_TABLE = "hive_metastore.default.noticias_automotivebusiness_arcelormittal"
 AUTOMOTIVO_FONTES = ["automotivebusiness", "autodata"]   # o volume de keywords do LinkedIn fica de fora
 AUTOMOTIVO_RELEVANTES = ["Alta"]                          # o que vira "Relevante" no portal; inclua "Média" para mais volume
-OUTPUT_DIR = "/Workspace/Users/isabela.pereira@arcelormittal.com.br/info-portal/public/data"   # tem que ser igual ao OUTPUT_DIR do 00_atualizar_portal
-CONFIG_PATH = OUTPUT_DIR.rsplit("/", 1)[0] + "/config.json"
+# Os JSONs são gerados FORA da pasta do Git: se ficassem em info-portal/public/data, a pasta do Git ficaria com
+# "mudanças locais" e o Databricks não conseguiria mais fazer checkout/pull ("Conflict checking out branch").
+# Quem leva os JSONs pro GitHub é o commit pela API do 00_atualizar_portal.
+OUTPUT_DIR = "/Workspace/Users/isabela.pereira@arcelormittal.com.br/portal_dados"   # tem que ser igual ao OUTPUT_DIR do 00_atualizar_portal
+CONFIG_PATH = "/Workspace/Users/isabela.pereira@arcelormittal.com.br/info-portal/public/config.json"
 PORTAL_URL = "https://SEU-SITE.netlify.app"
 
 # Tabelas geradas pelo notebook novoind_4_Intelligence (TABELA_FINAL e TABELA_PROJ de lá). Se o nome mudar lá, mude aqui também.

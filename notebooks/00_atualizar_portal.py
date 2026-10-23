@@ -53,8 +53,9 @@ RODAR = {"Infomet": False, "Automotivo": True, "4intelligence": True}   # False 
 
 NB_EXPORT = "./Export_Portal_Data (3)"
 
-# Onde o Export grava os JSONs (tem que ser o mesmo OUTPUT_DIR do Export)
-OUTPUT_DIR = "/Workspace/Users/isabela.pereira@arcelormittal.com.br/info-portal/public/data"
+# Onde o Export grava os JSONs (tem que ser o mesmo OUTPUT_DIR do Export). Fica FORA da pasta do Git de propósito,
+# pra não gerar conflito no checkout/pull. Os arquivos vão pro GitHub pelo commit abaixo.
+OUTPUT_DIR = "/Workspace/Users/isabela.pereira@arcelormittal.com.br/portal_dados"
 ARQUIVOS = ["feed.json", "feed_automotivo.json", "manual.json", "resumo.json",
             "meta.json", "distinct.json", "indicadores.json"]
 
@@ -172,3 +173,4 @@ if problemas:
     # falha no fim (depois de publicar as notícias) pra o agendamento mandar e-mail
     raise RuntimeError("Portal publicado, mas com problemas: " + " | ".join(problemas))
 print("🎉 Portal IM atualizado sem problemas.")
+

@@ -21,45 +21,113 @@
 
 # COMMAND ----------
 
+
 # ===================== CONFIGURAÇÃO =====================
-GITHUB_REPO   = "InteligenciaMercadoAM/info-portal"
+GITHUB_REPO = "InteligenciaMercadoAM/info-portal"
 GITHUB_BRANCH = "main"
-GITHUB_DATA_PATH = "public/data"  # pasta dos JSONs dentro do repositório (desde 21/10 o repo não tem mais a subpasta info-portal/)
-SECRET_SCOPE, SECRET_KEY = "portal-im", "github-token"   # token do GitHub com permissão Contents: read/write
+GITHUB_DATA_PATH = "public/data"
+SECRET_SCOPE, SECRET_KEY = "portal-im", "github-token"
 
-# Pasta do pipeline de notícias do Infomet no workspace (onde estão 01_stage_ingestion, 02_raw, 03_silver, 04_gold...)
-PIPELINE_DIR = "/Workspace/Users/isabela.pereira@arcelormittal.com.br/chatbot_v3 (final)/pipeline"
+# Pasta do pipeline Infomet
+PIPELINE_DIR = (
+    "/Workspace/Users/isabela.pereira@arcelormittal.com.br/"
+    "chatbot_v3 (final)/pipeline"
+)
 
-# Cada fonte: lista de notebooks rodados em sequência (se um falhar, os seguintes da MESMA fonte não rodam).
-# (nome exibido, caminho, timeout em minutos)
+# Pasta dos notebooks do portal
+PORTAL_NOTEBOOKS_DIR = (
+    "/Workspace/Users/isabela.pereira@arcelormittal.com.br/"
+    "info-portal/notebooks"
+)
+
+# Cada fonte: notebooks executados em sequência.
+# (nome exibido, caminho do notebook, timeout em minutos)
 FONTES = {
     "Infomet": [
-        ("scraping",                f"{PIPELINE_DIR}/01_stage_ingestion/01_infomet_scraping_v3", 60),
-        ("raw",                     f"{PIPELINE_DIR}/02_raw/01_infomet_tb_raw_ingestion", 30),
-        ("silver",                  f"{PIPELINE_DIR}/03_silver/01_tb_silver_creation", 30),
-        ("gold",                    f"{PIPELINE_DIR}/04_gold/01_chunking_data_v1", 30),
-        ("classificação (prompt Infomet)", f"{PIPELINE_DIR}/Job - Classificacao Relevancia Noticias", 60),
+        (
+            "scraping",
+            f"{PIPELINE_DIR}/01_stage_ingestion/01_infomet_scraping_v3",
+            60,
+        ),
+        (
+            "raw",
+            f"{PIPELINE_DIR}/02_raw/01_infomet_tb_raw_ingestion",
+            30,
+        ),
+        (
+            "silver",
+            f"{PIPELINE_DIR}/03_silver/01_tb_silver_creation",
+            30,
+        ),
+        (
+            "gold",
+            f"{PIPELINE_DIR}/04_gold/01_chunking_data_v1",
+            30,
+        ),
+        (
+            "classificação (prompt Infomet)",
+            f"{PIPELINE_DIR}/Job - Classificacao Relevancia Noticias",
+            60,
+        ),
     ],
+
     "Automotivo": [
-        ("scraping + classificação (prompt automotivo)", "./Scraper_e_Classificacao_Noticias_Automotivas", 60),
+        (
+            "scraping + classificação econômica",
+            f"{PORTAL_NOTEBOOKS_DIR}/Scraper_Automotivas_Economico",
+            60,
+        ),
     ],
+
     "4intelligence": [
-        ("indicadores (realizado + projeção)", "./novoind_4_Intelligence_isabela_ajustado_v3", 60),
+        (
+            "indicadores (realizado + projeção)",
+            f"{PORTAL_NOTEBOOKS_DIR}/novoind_4_Intelligence_isabela_ajustado_v3",
+            60,
+        ),
     ],
 }
-RODAR = {"Infomet": False, "Automotivo": True, "4intelligence": True}   # False pula a fonte nesta rodada
-# Infomet fica False porque os jobs "1- Pipeline Medallion" e "2- Classifica + Envia Teams" já fazem scraping e classificação.
-# Ligue só se esses jobs forem desligados, senão tudo roda duas vezes.
 
-NB_EXPORT = "./Export_Portal_Data (3)"
+RODAR = {
+    "Infomet": False,
+    "Automotivo": True,
+    "4intelligence": True,
+}
 
-# Onde o Export grava os JSONs (tem que ser o mesmo OUTPUT_DIR do Export). Fica FORA da pasta do Git de propósito,
-# pra não gerar conflito no checkout/pull. Os arquivos vão pro GitHub pelo commit abaixo.
-OUTPUT_DIR = "/Workspace/Users/isabela.pereira@arcelormittal.com.br/portal_dados"
-ARQUIVOS = ["feed.json", "feed_automotivo.json", "manual.json", "resumo.json",
-            "meta.json", "distinct.json", "indicadores.json"]
+# Parâmetro usado pelo notebook "Incluir_Conteudo_Manual" (botão "Publicar no portal agora?"):
+# com "sim", pula Infomet, Automotivo e 4i e roda só Export + commit, pra o conteúdo manual sair em minutos.
+dbutils.widgets.text("so_conteudo_manual", "nao")
+if dbutils.widgets.get("so_conteudo_manual").strip().lower() in ("sim", "s", "true"):
+    RODAR = {fonte: False for fonte in RODAR}
+    print("ℹ️ so_conteudo_manual = sim: só Export + commit nesta rodada.")
 
-FAZER_COMMIT      = True    # False gera os arquivos sem publicar (pra testar)
+# Infomet fica False porque os jobs
+# "1- Pipeline Medallion" e "2- Classifica + Envia Teams"
+# já fazem scraping e classificação.
+# Ative apenas se esses jobs forem desligados,
+# para evitar processamento duplicado.
+
+NB_EXPORT = f"{PORTAL_NOTEBOOKS_DIR}/Export_Portal_Data (3)"
+
+# Diretório onde o Export grava os JSONs.
+# Deve ser o mesmo OUTPUT_DIR definido no notebook Export.
+OUTPUT_DIR = (
+    "/Workspace/Users/isabela.pereira@arcelormittal.com.br/"
+    "portal_dados"
+)
+
+ARQUIVOS = [
+    "feed.json",
+    "feed_automotivo.json",
+    "manual.json",
+    "resumo.json",
+    "meta.json",
+    "distinct.json",
+    "indicadores.json",
+]
+
+FAZER_COMMIT = True  # False gera os arquivos sem publicar
+
 
 # COMMAND ----------
 
@@ -173,4 +241,3 @@ if problemas:
     # falha no fim (depois de publicar as notícias) pra o agendamento mandar e-mail
     raise RuntimeError("Portal publicado, mas com problemas: " + " | ".join(problemas))
 print("🎉 Portal IM atualizado sem problemas.")
-

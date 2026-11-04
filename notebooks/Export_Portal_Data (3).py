@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "6"
+# ///
 # MAGIC %md
 # MAGIC # Export Portal Data
 # MAGIC
@@ -38,6 +42,8 @@ PORTAL_URL = "https://SEU-SITE.netlify.app"
 # Tabelas geradas pelo notebook novoind_4_Intelligence (TABELA_FINAL e TABELA_PROJ de lá). Se o nome mudar lá, mude aqui também.
 INDICADORES_TABLE = "lcb_qas_sandbox2_comercial.isabela_pereira.indicadores_lt_20260113"
 INDICADORES_PROJ_TABLE = "lcb_qas_sandbox2_comercial.isabela_pereira.indicadores_lt_20260113_projecoes"
+INDICADORES_ATUALIZACAO_TABLE = "lcb_qas_sandbox2_comercial.isabela_pereira.indicadores_4i_atualizacao"   # TABELA_ATUALIZACAO do novoind
+INDICADORES_CALENDARIO_TABLE = "lcb_qas_sandbox2_comercial.isabela_pereira.indicadores_4i_calendario"     # TABELA_CALENDARIO do novoind
 # Regra do portal (planilha, coluna Unidade): "var" = variação contra o período anterior, unidade pela frequência;
 # "#" = série em nível, unidade e casas decimais vindas do indicadores_portal.
 UNIDADE_POR_FREQ = {"Mensal": "% m/m", "Trimestral": "% t/t", "Semestral": "% s/s", "Anual": "% a/a"}
@@ -272,6 +278,7 @@ def montar_indicador(code, meta, obs, hoje, mapa, proj=None):
         "unidade": mapa.get("unidade") if mapa.get("serie") == "#" else (mapa.get("unidade") or UNIDADE_POR_FREQ.get(freq, "%")),
         "casas": mapa.get("casas", _casas_auto(real) if mapa.get("serie") == "#" else 1),
         "serie": serie,
+        "ultimo_ref": ultimo.isoformat(),          # data do último realizado na 4i (base pra detectar dado novo)
     }
     for k in ["limiar_estavel", "destaque", "proxima_divulgacao", "referencia_proxima"]:
         if mapa.get(k) is not None:
@@ -328,7 +335,78 @@ if len(ids) != len(set(ids)):
 _fixos = [f["id"] if isinstance(f, dict) else f for f in cfg.get("indicadores_fixos", [])]
 fixos_ausentes = [f for f in _fixos if str(f).lower() not in {str(i).lower() for i in ids}]
 if fixos_ausentes:
-    print("⚠️ 'indicadores_fixos' do config.json sem indicador correspondente (o portal usa os marcados com destaque no lugar):", fixos_ausentes)
+    print("⚠️ 'indicadores_fixos' do config.json (nome curto do card) sem indicador correspondente:", fixos_ausentes)
+_ordem_fora = [c for c in cfg.get("indicadores_ordem", []) if str(c).lower() not in {str(i).lower() for i in ids}]
+if _ordem_fora:
+    print("⚠️ 'indicadores_ordem' do config.json com código sem indicador no portal:", _ordem_fora)
+
+# --- Data do último dado novo de cada indicador (realizado_novo_em) ---
+# Base: "última atualização histórica" da 4i (last_observation_updated, a mesma data do site da 4i), gravada pelo novoind.
+# Proteção contra reprocessamento: se o último período (ultimo_ref) não mudou desde a rodada anterior, mantém a data
+# anterior, mesmo que a 4i tenha recarregado a série. Assim só conta como dado novo um período novo.
+# Sem a data da 4i: período avançou = hoje; senão mantém a anterior. Sem nada: o site ordena pelo período de referência.
+def _data_4i():
+    if not spark.catalog.tableExists(INDICADORES_ATUALIZACAO_TABLE):
+        print(f"⚠️ {INDICADORES_ATUALIZACAO_TABLE} não existe (rode o novoind atualizado): sem data da 4i.")
+        return {}
+    out = {}
+    for r in spark.table(INDICADORES_ATUALIZACAO_TABLE).collect():
+        if r["last_observation_updated"]:
+            ts = datetime.fromisoformat(str(r["last_observation_updated"]).replace("Z", "+00:00"))
+            out[str(r["indicator_code"]).upper()] = ts.astimezone(ZoneInfo("America/Sao_Paulo")).date().isoformat()
+    return out
+
+def _indicadores_anteriores():
+    caminho = f"{OUTPUT_DIR}/indicadores.json"
+    try:
+        if os.path.exists(caminho):
+            return json.load(open(caminho, encoding="utf-8")).get("indicadores", [])
+        # sem arquivo local (pasta limpa): usa o que está publicado no GitHub (repositório público)
+        r = requests.get(f"https://raw.githubusercontent.com/{GITHUB_REPO}/{GITHUB_BRANCH}/{GITHUB_DATA_PATH}/indicadores.json", timeout=30)
+        return r.json().get("indicadores", []) if r.status_code == 200 else []
+    except Exception as e:
+        print("⚠️ Não consegui ler o indicadores.json anterior, sigo sem histórico de dado novo:", type(e).__name__, e)
+        return []
+
+import requests
+_anteriores = {str(i.get("id")).upper(): i for i in _indicadores_anteriores()}
+_datas_4i = _data_4i()
+
+# Próxima divulgação (agenda da 4i): a primeira data a partir de hoje. proxima_divulgacao do indicadores_portal, se preenchida, tem prioridade.
+if spark.catalog.tableExists(INDICADORES_CALENDARIO_TABLE):
+    _prox, _agora = {}, datetime.now(ZoneInfo("America/Sao_Paulo"))
+    for r in spark.table(INDICADORES_CALENDARIO_TABLE).collect():
+        t = datetime.fromisoformat(str(r["time"]).replace("Z", "+00:00")).astimezone(ZoneInfo("America/Sao_Paulo"))
+        k = str(r["indicator_code"]).upper()
+        if t >= _agora and (k not in _prox or t < _prox[k]):   # o que já saiu hoje não é "próxima"
+            _prox[k] = t
+    for it in itens:
+        t = _prox.get(str(it["id"]).upper())
+        if t and not INDICADORES_PORTAL.get(it["id"], {}).get("proxima_divulgacao"):
+            it["proxima_divulgacao"] = t.date().isoformat()
+            if t.hour or t.minute:
+                it["proxima_divulgacao_hora"] = t.strftime("%H:%M")
+    print(f"Próximas divulgações (agenda 4i): {sum(1 for i in itens if i.get('proxima_divulgacao'))} indicadores com data")
+else:
+    print(f"⚠️ {INDICADORES_CALENDARIO_TABLE} não existe (rode o novoind atualizado): card de próximas divulgações fica vazio.")
+_novos_hoje, _reproc = [], []
+for it in itens:
+    ant = _anteriores.get(str(it["id"]).upper()) or {}
+    d4i = _datas_4i.get(str(it["id"]).upper())
+    mesmo_periodo = ant.get("ultimo_ref") and it["ultimo_ref"] <= ant["ultimo_ref"]
+    if mesmo_periodo and ant.get("realizado_novo_em"):
+        it["realizado_novo_em"] = ant["realizado_novo_em"]          # nada novo: mantém (ignora reprocessamento da 4i)
+        if d4i and d4i > ant["realizado_novo_em"]:
+            _reproc.append(it["nome"])
+    elif d4i:
+        it["realizado_novo_em"] = d4i                               # período novo (ou 1a rodada): data da 4i
+    elif ant.get("ultimo_ref") and it["ultimo_ref"] > ant["ultimo_ref"]:
+        it["realizado_novo_em"] = hoje.isoformat()                  # período novo sem data da 4i: hoje
+    if it.get("realizado_novo_em") and ant.get("ultimo_ref") and it["ultimo_ref"] > ant["ultimo_ref"]:
+        _novos_hoje.append(f'{it["nome"]} ({it["realizado_novo_em"]})')
+print(f"Período novo nesta rodada ({len(_novos_hoje)}):", ", ".join(_novos_hoje) or "nenhum")
+if _reproc:
+    print("   4i recarregou sem período novo (data mantida):", ", ".join(_reproc))
 
 _nomes_cfg = {str(k).upper(): v for k, v in cfg.get("indicadores_nomes", {}).items()}
 _diverge = [c for c, m in INDICADORES_PORTAL.items() if _nomes_cfg.get(c) != m.get("nome")]
@@ -341,7 +419,7 @@ write_json("indicadores.json", {"atualizado_em": datetime.now(ZoneInfo("America/
 print(f"✅ indicadores.json: {len(itens)} indicadores, {sum(len(i['serie']) for i in itens)} pontos")
 for i in itens:
     real = [p for p in i["serie"] if p["tipo"] == "realizado"]
-    print(f"   {i['id']} {i['nome'][:45]:<45} {i.get('unidade') or '(sem unidade)':<9} · último {real[-1]['periodo'] if real else '-'} = {real[-1]['valor'] if real else '-'} · {len(i['serie']) - len(real)} projeções")
+    print(f"   {i['id']} {i['nome'][:45]:<45} {i.get('unidade') or '(sem unidade)':<9} · último {real[-1]['periodo'] if real else '-'} = {real[-1]['valor'] if real else '-'} · {len(i['serie']) - len(real)} projeções · dado novo em {i.get('realizado_novo_em') or '-'}")
 
 
 # COMMAND ----------

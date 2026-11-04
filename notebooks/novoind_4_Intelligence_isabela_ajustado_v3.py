@@ -173,6 +173,9 @@ SCHEMA        = "lcb_qas_sandbox2_comercial.isabela_pereira"
 TABELA_STAGE  = f"{SCHEMA}.indicadores_4i_stage"            # vai salvando em partes durante a coleta
 TABELA_FINAL  = f"{SCHEMA}.indicadores_lt_20260113"              # realizado (mesmas colunas de antes)
 TABELA_PROJ   = f"{SCHEMA}.indicadores_lt_20260113_projecoes"    # projeções 4i (tabela nova)
+TABELA_ATUALIZACAO = f"{SCHEMA}.indicadores_4i_atualizacao"     # "última atualização histórica" de cada série (portal ordena por ela)
+TABELA_CALENDARIO  = f"{SCHEMA}.indicadores_4i_calendario"      # próximas divulgações (agenda da 4i), card "Próximas divulgações"
+DIAS_CALENDARIO    = 60                                          # quantos dias à frente buscar na agenda
 
 RETOMAR      = True   # True: se a rodada anterior quebrou, continua de onde parou (pula o que já está no stage)
 LOTE_SALVAR  = 100    # salva no stage a cada N indicadores
@@ -496,6 +499,67 @@ for r in df_stage.select('indicator_code', 'serie_code').distinct().collect():
 print('Pediram pra ficar sem projeção:', sorted(SEM_PROJECAO))
 if log_erros:
     display(pd.DataFrame(log_erros).drop_duplicates())
+
+# COMMAND ----------
+
+# "Última atualização histórica" (a mesma data do site da 4i): campo last_observation_updated de /series/{série}.
+# É quando a 4i carregou histórico novo na base dela (no PIB 2T26 bateu com a divulgação do IBGE).
+# date_end = último período do histórico. O Export usa os dois pra ordenar a home por dado mais recente.
+# Uma chamada por indicador; se falhar, o indicador fica sem data e o portal usa o período de referência.
+from pyspark.sql.types import StructType, StructField, StringType
+_atualiz = []
+for r in df_stage.filter("tipo = 'realizado'").select('indicator_code', 'serie_code').distinct().collect():
+    serie = str(r[1]).split(' ')[0]                 # tira o sufixo " (var. calculada)" / " (proj. de ...)"
+    try:
+        resp = _get(f"{FS}/series/{serie}", {'language': 'pt-br'})
+        corpo = resp.json() if resp.status_code == 200 else {}
+        corpo = corpo.get('data', corpo) if isinstance(corpo, dict) else {}
+        corpo = corpo[0] if isinstance(corpo, list) and corpo else corpo
+    except Exception as e:
+        print('  sem metadado da série', serie, type(e).__name__)
+        corpo = {}
+    _atualiz.append((r[0], serie, corpo.get('last_observation_updated'), corpo.get('date_end')))
+sem_data = [a[0] for a in _atualiz if not a[2]]
+if sem_data:
+    print('⚠️ Sem last_observation_updated (portal usa o período de referência):', sorted(sem_data))
+(spark.createDataFrame(_atualiz, StructType([StructField(c, StringType()) for c in
+                       ['indicator_code', 'serie_code', 'last_observation_updated', 'date_end']]))
+ .write.mode('overwrite').option('overwriteSchema', 'true').saveAsTable(TABELA_ATUALIZACAO))
+print('Última atualização histórica gravada em', TABELA_ATUALIZACAO, '|', len(_atualiz) - len(sem_data), 'com data')
+display(pd.DataFrame(_atualiz, columns=['indicator_code', 'serie_code', 'last_observation_updated', 'date_end']).sort_values('last_observation_updated', ascending=False))
+
+# COMMAND ----------
+
+# Próximas divulgações: agenda da 4i (/calendar, a mesma do site). Fica só o que é dos indicadores do portal.
+# Se o endpoint não estiver liberado pro nosso acesso (403/404), avisa e segue: o card fica vazio, nada quebra.
+from datetime import date, timedelta
+_hoje = date.today()
+_cal, _status = [], None
+for ini in range(0, DIAS_CALENDARIO, 31):                         # uma chamada por bloco de ~1 mês
+    d0, d1 = _hoje + timedelta(days=ini), _hoje + timedelta(days=min(ini + 30, DIAS_CALENDARIO))
+    resp = _get(f"{FS}/calendar", {'start': d0.isoformat(), 'end': d1.isoformat(),
+                                   'timezone': 'America/Sao_Paulo', 'language': 'pt-br'})
+    _status = resp.status_code
+    if resp.status_code != 200:
+        print(f"⚠️ calendário da 4i: HTTP {resp.status_code} ({d0} a {d1}): {resp.text[:200]}")
+        break
+    corpo = resp.json()
+    itens_cal = corpo.get('data', corpo) if isinstance(corpo, dict) else corpo
+    _cal += [x for x in (itens_cal or []) if isinstance(x, dict)]
+_tipos = sorted({str(x.get('type')) for x in _cal})
+_nossos = [x for x in _cal if x.get('indicator_code') in set(lista_ind) and x.get('time')]
+print(f"Calendário 4i: {len(_cal)} eventos em {DIAS_CALENDARIO} dias (tipos: {_tipos}); {len(_nossos)} dos indicadores do portal")
+_linhas_cal = [(x['indicator_code'], x.get('series_code'), str(x['time']), str(x.get('type')),
+                ((x.get('indicator_name') or {}).get('pt-br') if isinstance(x.get('indicator_name'), dict) else x.get('indicator_name')),
+                None if x.get('previous') is None else float(x['previous']),
+                None if x.get('projection_4i') is None else float(x['projection_4i'])) for x in _nossos]
+if _status == 200:   # só sobrescreve a tabela se a agenda veio (senão mantém a da rodada anterior)
+    from pyspark.sql.types import DoubleType
+    _schema_cal = StructType([StructField(c, StringType()) for c in ['indicator_code', 'series_code', 'time', 'type', 'indicator_name']]
+                             + [StructField('previous', DoubleType()), StructField('projection_4i', DoubleType())])
+    spark.createDataFrame(_linhas_cal, _schema_cal).write.mode('overwrite').option('overwriteSchema', 'true').saveAsTable(TABELA_CALENDARIO)
+    if _linhas_cal:
+        display(pd.DataFrame(_linhas_cal, columns=[f.name for f in _schema_cal.fields]).sort_values('time'))
 
 # COMMAND ----------
 

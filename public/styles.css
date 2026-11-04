@@ -60,6 +60,7 @@ main{padding-top:22px;padding-bottom:48px}
 .kpi .proj b{font-weight:600;color:var(--ink-2)}
 .kpi .stale-tag{font-size:10px;background:var(--flat-bg);color:var(--flat);padding:1px 6px;border-radius:6px;margin-left:4px;font-weight:500;white-space:nowrap}
 .kpi.stale .value,.kpi.stale .spark{opacity:.55}
+.kpi .new-tag{font-size:10px;background:var(--up-bg);color:var(--up);padding:1px 6px;border-radius:6px;margin-left:4px;font-weight:600;white-space:nowrap}
 
 .thermo{text-align:left}
 .thermo .reading{font-size:24px;font-weight:700;margin:6px 0 2px}

@@ -131,8 +131,28 @@ function prepareIndicator(raw) {
     ind.direcao = dir; ind.sinal = dir * ind.polaridade;
   } else { ind.direcao = null; ind.sinal = null; }
   ind.busca = norm(`${raw.nome} ${ind.setor} ${ind.regiao} ${raw.fonte || ''}`);
+  // Ordem por "dado mais recente": 1º a última atualização histórica da 4i (realizado_novo_em, vem do Export),
+  // 2º o fim do período de referência do último realizado (set/26 e 3T26 empatam em 30/09).
+  ind.novoTs = toTs(raw.realizado_novo_em);
+  ind.refTs = periodEndTs(last?.periodo);
   return ind;
 }
+// Fim do período de referência ('set/26' -> 30/09/2026, '3T26' -> 30/09/2026, '2026' -> 31/12/2026, '15/09/26' -> o próprio dia).
+function periodEndTs(periodo) {
+  const p = String(periodo || '').toLowerCase().trim();
+  let mm, y, m;
+  if ((mm = p.match(/^([a-zç]{3})\/(\d{2,4})$/)) && MONTHS.includes(mm[1])) { m = MONTHS.indexOf(mm[1]) + 1; y = +mm[2]; }
+  else if ((mm = p.match(/^([1-4])t(\d{2,4})$/))) { m = +mm[1] * 3; y = +mm[2]; }
+  else if ((mm = p.match(/^([12])s(\d{2,4})$/))) { m = +mm[1] * 6; y = +mm[2]; }
+  else if ((mm = p.match(/^(\d{4})$/))) { m = 12; y = +mm[1]; }
+  else if ((mm = p.match(/^(\d{2})\/(\d{2})\/(\d{2,4})$/))) { y = +mm[3]; if (y < 100) y += 2000; return Date.UTC(y, +mm[2] - 1, +mm[1]); }
+  else return 0;
+  if (y < 100) y += 2000;
+  return Date.UTC(y, m, 0);   // dia 0 do mês seguinte = último dia do mês m
+}
+// Mais recente primeiro: quem recebeu dado novo (com data) vem antes de quem ainda não tem data registrada.
+const byRecent = (a, b) => (b.novoTs - a.novoTs) || (b.refTs - a.refTs) || a.nome.localeCompare(b.nome, 'pt-BR');
+const isNew = ind => ind.novoTs && todayTs() - ind.novoTs <= (C.portal?.dias_dado_novo ?? 7) * DAY;
 const SIGNAL = { 1: ['up', 'Favorável'], 0: ['flat', 'Estável'], '-1': ['down', 'Desfavorável'] };
 const signalTag = s => s == null ? '' : `<span class="signal ${SIGNAL[s][0]}">${SIGNAL[s][1]}</span>`;
 const fmtVal = (v, ind) => `${nf(v, ind.casas ?? 1)}${ind.unidade && ind.unidade.startsWith('%') ? '%' : ''}`;
@@ -246,17 +266,24 @@ function kpi(ind) {
     : prev && prev !== ind.last ? `ant. ${esc(prev.periodo)}: ${fmtVal(prev.valor, ind)}` : '';
   return `<div class="kpi${stale ? ' stale' : ''}" data-go="indicators" tabindex="0" title="${esc(ind.nome)}"><span class="label">${esc(ind.nome_card || ind.nome)}</span>
     <span class="value">${ind.last ? fmtVal(ind.last.valor, ind) : '—'}${u ? `<small>${esc(u)}</small>` : ''}</span>
-    <span class="proj">${ind.last ? `<b>${esc(ind.last.periodo)}</b>` : ''}${ind.last && sub ? ' · ' : ''}${sub}${stale ? ' <span class="stale-tag">desatualizado</span>' : ''}</span>
+    <span class="proj">${ind.last ? `<b>${esc(ind.last.periodo)}</b>` : ''}${ind.last && sub ? ' · ' : ''}${sub}${stale ? ' <span class="stale-tag">desatualizado</span>' : isNew(ind) ? ` <span class="new-tag" title="Última atualização histórica: ${fmtDate(ind.realizado_novo_em)}">novo</span>` : ''}</span>
     <svg class="spark" data-chart="${esc(ind.id)}" data-mode="spark" role="img" aria-label="Série de ${esc(ind.nome)}"></svg></div>`;
 }
-// Indicadores fixos: sempre os mesmos na home, independentemente dos filtros.
-// No config, cada item pode ser só o código ("BRGDP0002") ou um objeto { id, nome, unidade, casas }.
-const fixedCfg = () => (C.indicadores_fixos || []).map(f => typeof f === 'string' ? { id: f } : f).filter(f => f && f.id);
-function fixedIndicators() {
-  let list = fixedCfg().map(f => state.indicators.find(i => key(i.id) === key(f.id))).filter(Boolean);
-  if (!list.length) list = state.indicators.filter(i => i.destaque).slice(0, 4);
-  return list;
+// Home: os indicadores com realizado mais recente, respeitando o filtro de setor (e a busca).
+// Quantidade em config.portal.indicadores_na_home (padrão 5).
+function recentIndicators() {
+  return [...filteredIndicators()].sort(byRecent).slice(0, C.portal?.indicadores_na_home ?? 5);
 }
+// Página de indicadores: primeiro os da ordem fixa do config (indicadores_ordem, lista de códigos),
+// depois os demais por realizado mais recente. Com a lista vazia, vale só a ordem por recência.
+function orderedIndicators(list) {
+  const ordem = (C.indicadores_ordem || []).map(key), pos = new Map(ordem.map((k, i) => [k, i]));
+  const fixos = list.filter(i => pos.has(key(i.id))).sort((a, b) => pos.get(key(a.id)) - pos.get(key(b.id)));
+  return [...fixos, ...list.filter(i => !pos.has(key(i.id))).sort(byRecent)];
+}
+// indicadores_fixos do config: só ajustes de exibição (nome curto do card, unidade, casas). Não define mais quem aparece na home.
+// Cada item pode ser só o código ("BRGDP0002") ou um objeto { id, nome, unidade, casas }.
+const fixedCfg = () => (C.indicadores_fixos || []).map(f => typeof f === 'string' ? { id: f } : f).filter(f => f && f.id);
 // Aplica nome amigável, unidade e casas decimais do config (vale para a home e para a página de indicadores).
 function applyFixedOverrides() {
   // 1) Nomes oficiais da planilha de correspondência (config.indicadores_nomes: código -> nome).
@@ -275,7 +302,7 @@ function applyFixedOverrides() {
   // 2) Ajustes dos indicadores fixos da home (nome curto do card, unidade, casas decimais).
   fixedCfg().forEach(f => {
     const ind = state.indicators.find(i => key(i.id) === key(f.id));
-    if (!ind) { console.warn(`Indicador fixo ${f.id} não encontrado em data/indicadores.json`); return; }
+    if (!ind) { console.warn(`Ajuste de indicador ${f.id} (indicadores_fixos) sem dado em data/indicadores.json`); return; }
     if (f.nome) { ind.nome_original ??= ind.nome; ind.nome_card = f.nome; ind.busca += ' ' + norm(f.nome); }
     if (f.unidade != null) ind.unidade = f.unidade;
     if (f.casas != null) ind.casas = f.casas;
@@ -285,7 +312,7 @@ function agenda(inds) {
   const t = todayTs();
   const next = inds.filter(i => toTs(i.proxima_divulgacao) >= t).sort((a, b) => toTs(a.proxima_divulgacao) - toTs(b.proxima_divulgacao)).slice(0, C.portal?.itens_agenda ?? 5);
   const item = i => { const m = dparts(i.proxima_divulgacao);
-    return `<div class="agenda-item"><div class="date-box"><b>${m[3]}</b><span>${MONTHS[+m[2] - 1]}</span></div><div><div class="name">${esc(i.nome)}</div><div class="sub">${esc(i.fonte_original || i.fonte || '')}${i.referencia_proxima ? ' · ref. ' + esc(i.referencia_proxima) : ''}</div></div></div>`; };
+    return `<div class="agenda-item"><div class="date-box"><b>${m[3]}</b><span>${MONTHS[+m[2] - 1]}</span></div><div><div class="name">${esc(i.nome)}</div><div class="sub">${i.proxima_divulgacao_hora ? esc(i.proxima_divulgacao_hora) + ' · ' : ''}${esc(i.fonte_original || i.fonte || '')}${i.referencia_proxima ? ' · ref. ' + esc(i.referencia_proxima) : ''}</div></div></div>`; };
   return `<div class="card"><div class="card-title"><h2>Próximas divulgações</h2>${sampleBadge()}</div>${next.map(item).join('') || '<p class="muted">Nenhuma divulgação agendada.</p>'}</div>`;
 }
 function summaryCard() {
@@ -323,14 +350,16 @@ function themeBoxes(news, max = C.portal?.temas_na_home ?? 6) {
 
 // ---------- páginas ----------
 function home() {
-  const news = filteredNews(), fixed = fixedIndicators();
+  const news = filteredNews(), recent = recentIndicators();
   const showThermo = C.portal?.mostrar_termometro && state.indicators.length;
-  const kpis = fixed.length ? `<div class="kpis">${fixed.map(kpi).join('')}</div>` : '';
+  const sec = $('sector').value;
+  const kpis = !state.indicators.length ? '' : `<div class="kpis-block"><div class="section-head"><h2>Últimos dados de indicadores${sec ? ` · ${esc(sec)}` : ''}</h2><button class="linkbtn" data-go="indicators">Ver todos os indicadores</button></div>
+    ${recent.length ? `<div class="kpis">${recent.map(kpi).join('')}</div>` : '<div class="card empty">Nenhum indicador específico filtrado.</div>'}</div>`;
   return `${alertsStrip()}
   ${showThermo ? `<div class="hero">${thermometer(state.indicators)}${kpis}</div>` : kpis}
   <div class="cols">
     <div><div class="section-head"><h2>Principais notícias por tema</h2><button class="linkbtn" data-go="feed">Ver todas as ${news.length} notícias</button></div>${themeBoxes(news)}</div>
-    <div class="stack">${state.indicators.length ? agenda(state.indicators) : ''}${summaryCard()}${competitorSnapshot(news)}</div>
+    <div class="stack">${state.indicators.length ? agenda(filteredIndicators()) : ''}${summaryCard()}${competitorSnapshot(news)}</div>
   </div>`;
 }
 function feed() {
@@ -352,11 +381,11 @@ function indicatorCard(ind) {
       <div>Projeção${ind.horizon ? ` (${esc(ind.horizon.periodo)})` : ''}<b>${ind.horizon ? fmtVal(ind.horizon.valor, ind) : '—'}</b></div></div>
     <svg class="chart" data-chart="${esc(ind.id)}" role="img" aria-label="Gráfico de ${esc(ind.nome)}: realizado e projeção"></svg>
     <div class="chart-legend"><span><i></i>Realizado</span><span><i class="dash"></i>Projeção</span></div>
-    <div class="foot"><span>Fonte: ${esc(ind.fonte || '4intelligence')}${ind.fonte_original ? ' / ' + esc(ind.fonte_original) : ''}</span><span>${ind.ultima_divulgacao ? `Última divulgação ${fmtDate(ind.ultima_divulgacao)}` : `Último dado: ${esc(ind.last?.periodo || '—')}`}${ind.proxima_divulgacao ? ` · próxima ${fmtDate(ind.proxima_divulgacao)}` : ''}</span></div></div>`;
+    <div class="foot"><span>Fonte: ${esc(ind.fonte || '4intelligence')}${ind.fonte_original ? ' / ' + esc(ind.fonte_original) : ''}</span><span>${ind.realizado_novo_em ? `Última atualização histórica ${fmtDate(ind.realizado_novo_em)}` : ind.ultima_divulgacao ? `Última divulgação ${fmtDate(ind.ultima_divulgacao)}` : `Último dado: ${esc(ind.last?.periodo || '—')}`}${ind.proxima_divulgacao ? ` · próxima ${fmtDate(ind.proxima_divulgacao)}` : ''}</span></div></div>`;
 }
 function indicators() {
   if (!state.indicators.length) return `<div class="card empty">Nenhum indicador publicado ainda. Exporte <code>data/indicadores.json</code> pelo notebook.</div>`;
-  const a = filteredIndicators();
+  const a = orderedIndicators(filteredIndicators());
   return `${state.indicatorsSample ? `<p style="margin:0 0 10px">${sampleBadge()}</p>` : ''}<div class="ind-grid">${a.map(indicatorCard).join('') || '<div class="card empty">Nenhum indicador para os filtros selecionados.</div>'}</div>`;
 }
 function competitors() {

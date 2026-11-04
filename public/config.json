@@ -6,7 +6,9 @@
     "noticias_por_tema": 3,
     "dias_validade_alerta": 7,
     "itens_agenda": 5,
-    "mostrar_termometro": false
+    "mostrar_termometro": false,
+    "indicadores_na_home": 5,
+    "dias_dado_novo": 7
   },
 
   "indicadores_nomes": {
@@ -46,6 +48,9 @@
     "BRINR0012": "Selic (% a.a.)"
   },
   "indicadores_somente_lista": true,
+
+  "_indicadores_ordem": "Ordem fixa da página de Indicadores (códigos 4i). Os que não estiverem aqui vêm depois, do dado mais recente para o mais antigo. Lista vazia = tudo por recência.",
+  "indicadores_ordem": [],
 
   "indicadores_fixos": [
     { "id": "BRGDP0002", "nome": "PIB total" },

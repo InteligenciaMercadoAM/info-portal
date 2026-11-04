@@ -175,7 +175,7 @@ TABELA_FINAL  = f"{SCHEMA}.indicadores_lt_20260113"              # realizado (me
 TABELA_PROJ   = f"{SCHEMA}.indicadores_lt_20260113_projecoes"    # projeções 4i (tabela nova)
 TABELA_ATUALIZACAO = f"{SCHEMA}.indicadores_4i_atualizacao"     # "última atualização histórica" de cada série (portal ordena por ela)
 TABELA_CALENDARIO  = f"{SCHEMA}.indicadores_4i_calendario"      # próximas divulgações (agenda da 4i), card "Próximas divulgações"
-DIAS_CALENDARIO    = 60                                          # quantos dias à frente buscar na agenda
+DIAS_CALENDARIO    = 30                                          # quantos dias à frente buscar na agenda (a 4i hoje só tem ~10)
 
 RETOMAR      = True   # True: se a rodada anterior quebrou, continua de onde parou (pula o que já está no stage)
 LOTE_SALVAR  = 100    # salva no stage a cada N indicadores
@@ -532,22 +532,40 @@ display(pd.DataFrame(_atualiz, columns=['indicator_code', 'serie_code', 'last_ob
 
 # Próximas divulgações: agenda da 4i (/calendar, a mesma do site). Fica só o que é dos indicadores do portal.
 # Se o endpoint não estiver liberado pro nosso acesso (403/404), avisa e segue: o card fica vazio, nada quebra.
+# Formato da resposta: {"data": [{"start": dia, "end": dia, "releases": [eventos]}]}. Os eventos ficam DENTRO de "releases".
+# Consulta dia a dia: pedindo um intervalo longo numa chamada só, a API devolveu só parte dos dias (teste de 04/11/26).
+# Os dias com divulgação vêm de /calendar/month/AAAA-MM. Hoje a agenda da 4i só cobre ~10 dias à frente;
+# mês sem nada volta "data": null, e isso é normal, não é erro.
 from datetime import date, timedelta
 _hoje = date.today()
+_fim = _hoje + timedelta(days=DIAS_CALENDARIO)
 _cal, _status = [], None
-for ini in range(0, DIAS_CALENDARIO, 31):                         # uma chamada por bloco de ~1 mês
-    d0, d1 = _hoje + timedelta(days=ini), _hoje + timedelta(days=min(ini + 30, DIAS_CALENDARIO))
-    resp = _get(f"{FS}/calendar", {'start': d0.isoformat(), 'end': d1.isoformat(),
-                                   'timezone': 'America/Sao_Paulo', 'language': 'pt-br'})
+_meses = sorted({(_hoje + timedelta(days=d)).strftime('%Y-%m') for d in range(DIAS_CALENDARIO + 1)})
+_dias = []
+for mes in _meses:
+    resp = _get(f"{FS}/calendar/month/{mes}", {'language': 'pt-br'})
     _status = resp.status_code
     if resp.status_code != 200:
-        print(f"⚠️ calendário da 4i: HTTP {resp.status_code} ({d0} a {d1}): {resp.text[:200]}")
+        print(f"⚠️ calendário da 4i: HTTP {resp.status_code} ({mes}): {resp.text[:200]}")
         break
-    corpo = resp.json()
-    itens_cal = corpo.get('data', corpo) if isinstance(corpo, dict) else corpo
-    _cal += [x for x in (itens_cal or []) if isinstance(x, dict)]
+    _dias += [d for d in (resp.json().get('data') or []) if _hoje.isoformat() <= d <= _fim.isoformat()]
+for dia in sorted(set(_dias)) if _status == 200 else []:
+    resp = _get(f"{FS}/calendar", {'start': dia, 'end': dia, 'timezone': 'America/Sao_Paulo', 'language': 'pt-br'})
+    if resp.status_code != 200:
+        print(f"⚠️ calendário da 4i: HTTP {resp.status_code} ({dia}): {resp.text[:200]}")
+        _status = resp.status_code
+        break
+    for bloco in (resp.json().get('data') or []):
+        for x in (bloco.get('releases') or []):
+            if isinstance(x, dict):
+                # Sem horário (ex.: Anfavea), usa o dia às 00:00. O Export não mostra hora quando é 00:00.
+                x.setdefault('time', None)
+                if not x['time']:
+                    x['time'] = f"{bloco.get('start', dia)}T00:00:00-03:00"
+                _cal.append(x)
 _tipos = sorted({str(x.get('type')) for x in _cal})
-_nossos = [x for x in _cal if x.get('indicator_code') in set(lista_ind) and x.get('time')]
+print(f"Dias com divulgação na agenda 4i até {_fim}: {len(set(_dias))} (último: {max(_dias) if _dias else '-'})")
+_nossos = [x for x in _cal if x.get('indicator_code') in set(lista_ind)]
 print(f"Calendário 4i: {len(_cal)} eventos em {DIAS_CALENDARIO} dias (tipos: {_tipos}); {len(_nossos)} dos indicadores do portal")
 _linhas_cal = [(x['indicator_code'], x.get('series_code'), str(x['time']), str(x.get('type')),
                 ((x.get('indicator_name') or {}).get('pt-br') if isinstance(x.get('indicator_name'), dict) else x.get('indicator_name')),

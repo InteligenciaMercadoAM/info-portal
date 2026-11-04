@@ -27,6 +27,9 @@ EXTRA_NEWS_TABLES = {
     # "Piloto automotivo": {"table": "lcb_qas_sandbox2_comercial.isabela_pereira.TABELA_DO_PILOTO", "setor": "Automotivo"},
 }
 EXPORT_DAYS = 90  # quantos dias de notícias exportar
+# Corte de relevância SÓ do portal: no feed.json, notícia do bot (Infomet) é "RELEVANTE" se score_relevancia >= este valor.
+# O job de classificação e a mensagem do Teams continuam com a relevância original do job. None = usa a do job.
+SCORE_MIN_RELEVANTE_PORTAL = 5
 
 # Piloto automotivo (Automotive Business + AutoData): schema diferente do bot, por isso tem célula própria e vai em feed_automotivo.json
 AUTOMOTIVO_TABLE = "hive_metastore.default.noticias_automotivebusiness_arcelormittal"
@@ -116,7 +119,17 @@ df = news_df(TABLE)
 for nome, spec in EXTRA_NEWS_TABLES.items():
     df = df.unionByName(news_df(spec["table"], nome, spec.get("setor")), allowMissingColumns=True)
 records = [r.asDict() for r in df.orderBy(F.desc("data_publicacao"), F.desc("id")).collect()]
-write_json("feed.json", records)
+
+# feed.json usa o corte do portal; "records" (usado na mensagem do Teams lá embaixo) fica com a relevância original do job.
+def _relevancia_portal(r):
+    if SCORE_MIN_RELEVANTE_PORTAL is None or r.get("projeto"):   # projetos piloto têm escala própria: não mexe
+        return r
+    return {**r, "relevancia": "RELEVANTE" if (r.get("score_relevancia") or 0) >= SCORE_MIN_RELEVANTE_PORTAL else "IRRELEVANTE",
+            "relevancia_job": r.get("relevancia")}
+records_portal = [_relevancia_portal(r) for r in records]
+write_json("feed.json", records_portal)
+_rel = lambda lst: sum(str(r.get("relevancia")).upper() == "RELEVANTE" for r in lst)
+print(f"Relevantes no portal (score >= {SCORE_MIN_RELEVANTE_PORTAL}): {_rel(records_portal)} | pelo job (Teams): {_rel(records)}")
 print(f"✅ feed.json: {len(records)} notícias ({EXPORT_DAYS} dias)" + (f", incluindo {', '.join(EXTRA_NEWS_TABLES)}" if EXTRA_NEWS_TABLES else ""))
 
 # COMMAND ----------
@@ -222,10 +235,26 @@ print("✅ distinct.json exportado")
 #                                          ultima_divulgacao, proxima_divulgacao, serie: [{periodo, valor, tipo: "realizado"|"projecao"}]}]}
 # Realizado vem de INDICADORES_TABLE e projeção de INDICADORES_PROJ_TABLE (antes só o realizado era lido, por isso não aparecia projeção).
 # Em automação é melhor falhar alto do que publicar um indicadores.json velho ou vazio.
-import re, statistics
-from datetime import date
+import os, json, re, statistics
+import requests
+from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 
 MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]
+
+def _parse_ts(s):
+    """ISO 8601 tolerante: aceita 'Z', fração de segundo com qualquer nº de dígitos (ex.: .28) e datetime já pronto.
+    datetime.fromisoformat (Python < 3.11) só aceita fração com 3 ou 6 dígitos, por isso a normalização.
+    Sem fuso (naive) assume UTC."""
+    if isinstance(s, datetime):
+        ts = s
+    else:
+        s = str(s).strip().replace("Z", "+00:00")
+        s = re.sub(r"\.(\d+)", lambda m: "." + (m.group(1) + "000000")[:6], s, count=1)
+        ts = datetime.fromisoformat(s)
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return ts
 
 def _frequencia(datas):
     if len(datas) < 2:
@@ -352,7 +381,7 @@ def _data_4i():
     out = {}
     for r in spark.table(INDICADORES_ATUALIZACAO_TABLE).collect():
         if r["last_observation_updated"]:
-            ts = datetime.fromisoformat(str(r["last_observation_updated"]).replace("Z", "+00:00"))
+            ts = _parse_ts(r["last_observation_updated"])
             out[str(r["indicator_code"]).upper()] = ts.astimezone(ZoneInfo("America/Sao_Paulo")).date().isoformat()
     return out
 
@@ -368,7 +397,6 @@ def _indicadores_anteriores():
         print("⚠️ Não consegui ler o indicadores.json anterior, sigo sem histórico de dado novo:", type(e).__name__, e)
         return []
 
-import requests
 _anteriores = {str(i.get("id")).upper(): i for i in _indicadores_anteriores()}
 _datas_4i = _data_4i()
 
@@ -376,9 +404,11 @@ _datas_4i = _data_4i()
 if spark.catalog.tableExists(INDICADORES_CALENDARIO_TABLE):
     _prox, _agora = {}, datetime.now(ZoneInfo("America/Sao_Paulo"))
     for r in spark.table(INDICADORES_CALENDARIO_TABLE).collect():
-        t = datetime.fromisoformat(str(r["time"]).replace("Z", "+00:00")).astimezone(ZoneInfo("America/Sao_Paulo"))
+        t = _parse_ts(r["time"]).astimezone(ZoneInfo("America/Sao_Paulo"))
         k = str(r["indicator_code"]).upper()
-        if t >= _agora and (k not in _prox or t < _prox[k]):   # o que já saiu hoje não é "próxima"
+        sem_hora = not (t.hour or t.minute)                      # evento sem horário (ex.: Anfavea) vem às 00:00
+        futuro = t.date() >= hoje if sem_hora else t >= _agora   # sem horário vale o dia inteiro; com horário, o que já saiu não é "próxima"
+        if futuro and (k not in _prox or t < _prox[k]):
             _prox[k] = t
     for it in itens:
         t = _prox.get(str(it["id"]).upper())
@@ -420,7 +450,6 @@ print(f"✅ indicadores.json: {len(itens)} indicadores, {sum(len(i['serie']) for
 for i in itens:
     real = [p for p in i["serie"] if p["tipo"] == "realizado"]
     print(f"   {i['id']} {i['nome'][:45]:<45} {i.get('unidade') or '(sem unidade)':<9} · último {real[-1]['periodo'] if real else '-'} = {real[-1]['valor'] if real else '-'} · {len(i['serie']) - len(real)} projeções · dado novo em {i.get('realizado_novo_em') or '-'}")
-
 
 # COMMAND ----------
 

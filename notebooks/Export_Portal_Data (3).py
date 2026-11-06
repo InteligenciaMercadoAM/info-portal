@@ -40,7 +40,7 @@ AUTOMOTIVO_RELEVANTES = ["Alta"]                          # o que vira "Relevant
 # Quem leva os JSONs pro GitHub é o commit pela API do 00_atualizar_portal.
 OUTPUT_DIR = "/Workspace/Users/isabela.pereira@arcelormittal.com.br/portal_dados"   # tem que ser igual ao OUTPUT_DIR do 00_atualizar_portal
 CONFIG_PATH = "/Workspace/Users/isabela.pereira@arcelormittal.com.br/info-portal/public/config.json"
-PORTAL_URL = "https://SEU-SITE.netlify.app"
+PORTAL_URL = "https://imview.netlify.app"
 
 # Tabelas geradas pelo notebook novoind_4_Intelligence (TABELA_FINAL e TABELA_PROJ de lá). Se o nome mudar lá, mude aqui também.
 INDICADORES_TABLE = "lcb_qas_sandbox2_comercial.isabela_pereira.indicadores_lt_20260113"
@@ -564,3 +564,4 @@ for fname in DATA_FILES:
     if os.path.exists(p):
         print(f"  {fname}: {os.path.getsize(p) / (1024 * 1024):.2f} MB")
 print(f"\n📁 Arquivos em: {OUTPUT_DIR}")
+

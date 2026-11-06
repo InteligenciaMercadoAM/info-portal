@@ -271,8 +271,15 @@ function kpi(ind) {
 }
 // Home: os indicadores com realizado mais recente, respeitando o filtro de setor (e a busca).
 // Quantidade em config.portal.indicadores_na_home (padrão 5).
+// Um card por fonte: indicadores com o mesmo prefixo no nome ("ABRAINC - ...", "Anfavea - ...", "FGV - ...") formam um grupo.
+// O grupo entra na posição do seu dado mais recente e o card mostrado é o "Total"/"Todos" do grupo (se houver; senão o mais recente).
+// Nomes sem prefixo ("PIB total", "IGP-M") são grupos de um só. Para ajustar um grupo: config.indicadores_grupo_home { código: "grupo" }.
+const homeGroup = ind => (C.indicadores_grupo_home || {})[ind.id] || (ind.nome.includes(' - ') ? norm(ind.nome.split(' - ')[0]).trim() : ind.id);
+const isTotal = ind => /\b(total|totais|todos)\b/.test(norm(ind.nome));
 function recentIndicators() {
-  return [...filteredIndicators()].sort(byRecent).slice(0, C.portal?.indicadores_na_home ?? 5);
+  const groups = new Map();
+  [...filteredIndicators()].sort(byRecent).forEach(i => { const g = homeGroup(i); groups.has(g) ? groups.get(g).push(i) : groups.set(g, [i]); });
+  return [...groups.values()].slice(0, C.portal?.indicadores_na_home ?? 5).map(list => list.find(isTotal) || list[0]);
 }
 // Página de indicadores: primeiro os da ordem fixa do config (indicadores_ordem, lista de códigos),
 // depois os demais por realizado mais recente. Com a lista vazia, vale só a ordem por recência.

@@ -3,7 +3,8 @@
 //   data/feed.json        notícias do bot (obrigatório)
 //   data/manual.json      notícias e alertas incluídos pela equipe (opcional)
 //   data/indicadores.json indicadores 4intelligence: realizado + projeção (opcional)
-//   data/resumo.json      último resumo semanal, elaborado pela equipe (opcional)
+//   data/resumo.json      último resumo semanal: gerado por IA (destaques → notícias) ou elaborado pela equipe (opcional)
+//   data/textos/AAAA-MM-DD.json  texto completo das notícias do dia, {id: texto}; baixado só ao abrir a notícia (opcional)
 //   data/meta.json        data/hora da última exportação (opcional)
 
 let C = {};            // config.json
@@ -322,8 +323,19 @@ function agenda(inds) {
     return `<div class="agenda-item"><div class="date-box"><b>${m[3]}</b><span>${MONTHS[+m[2] - 1]}</span></div><div><div class="name">${esc(i.nome)}</div><div class="sub">${i.proxima_divulgacao_hora ? esc(i.proxima_divulgacao_hora) + ' · ' : ''}${esc(i.fonte_original || i.fonte || '')}${i.referencia_proxima ? ' · ref. ' + esc(i.referencia_proxima) : ''}</div></div></div>`; };
   return `<div class="card"><div class="card-title"><h2>Próximas divulgações</h2>${sampleBadge()}</div>${next.map(item).join('') || '<p class="muted">Nenhuma divulgação agendada.</p>'}</div>`;
 }
+// Resumo da IA: cada destaque abre (details) a lista de notícias; cada notícia abre o detalhe com o texto completo.
+function iaSummaryCard(r) {
+  const news = n => `<li class="dg-item" tabindex="0" data-id="${esc(n.id)}"${/^https?:\/\//i.test(n.url || '') ? ` data-url="${esc(n.url)}"` : ''}>
+      <div class="meta">${esc(n.fonte || '')}${n.data_publicacao ? ' · ' + shortDate(n.data_publicacao) : ''}</div>
+      <h4>${esc(n.titulo)}</h4>${n.resumo ? `<p>${esc(n.resumo)}</p>` : ''}</li>`;
+  return `<div class="card summary ia"><div class="card-title"><h2>Resumo semanal</h2><span class="muted" style="font-size:12px">${esc(r.titulo || '')}</span></div>
+    <div class="digest">${r.destaques.map(d => `<details class="dg"><summary><span class="dg-head"><b>${esc(d.titulo)}</b>${d.resumo ? `<span>${esc(d.resumo)}</span>` : ''}</span><i class="dg-count">${d.noticias.length} ${d.noticias.length === 1 ? 'notícia' : 'notícias'}</i></summary>
+      <ul class="dg-news">${d.noticias.map(news).join('')}</ul></details>`).join('')}</div>
+    <p class="muted" style="font-size:11px;margin:8px 0 0">Gerado por IA (Llama) a partir de ${esc(r.n_noticias ?? '')} notícias relevantes da semana. Pode conter imprecisões: confira na notícia.</p></div>`;
+}
 function summaryCard() {
   const r = state.resumo;
+  if (r && Array.isArray(r.destaques) && r.destaques.length && typeof r.destaques[0] === 'object') return iaSummaryCard(r);
   if (!r) return `<div class="card summary"><div class="card-title"><h2>Resumo semanal</h2></div><p>O resumo da semana aparece aqui assim que a equipe publicar.</p></div>`;
   const bullets = Array.isArray(r.destaques) ? r.destaques : String(r.texto || '').split('\n').map(s => s.replace(/^[-•*]\s*/, '').trim()).filter(Boolean);
   return `<div class="card summary"><div class="card-title"><h2>Resumo semanal</h2><span class="muted" style="font-size:12px">${esc(r.semana || r.titulo || '')}</span></div>
@@ -405,11 +417,11 @@ function competitors() {
 }
 function detail(r) {
   if (!r) return '<div class="card empty">Selecione uma notícia para ver os detalhes.</div>';
-  const facts = [['Fonte', r.fonte], ['Origem', r.alerta ? 'Alerta IM' : r.origem], ['Setor', r.setor], ['Região', r.regioes.join(', ') || 'Não identificada'], ['Tema', r.categoria], ['Empresa principal', r.empresa],
+  const facts = [['Fonte', r.fonte], ...(r.fonte_original ? [['Fonte original', r.fonte_original]] : []), ['Origem', r.alerta ? 'Alerta IM' : r.origem], ['Setor', r.setor], ['Região', r.regioes.join(', ') || 'Não identificada'], ['Tema', r.categoria], ['Empresa principal', r.empresa],
     ['Relevância', r.rel], ['Score', r.score], ['Publicação', fmtDate(r.data_publicacao)], [r.manual ? 'Incluída por' : 'Classificada em', r.manual ? (r.adicionado_por || 'Equipe IM') : fmtDate(r.classificado_em, true)], ['ID', r.id]];
   const link = /^https?:\/\//i.test(r.url || '') ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">Abrir fonte original</a>` : '';
   return `<button class="ghost back" data-back>Voltar</button><div class="detail-grid"><div class="card${r.alerta ? ' is-alert' : ''}"><div class="meta">${esc(r.fonte)} · ${fmtDate(r.data_publicacao)}</div><h2>${esc(r.titulo)}</h2>${tags(r)}
-    <p class="detail-text">${esc(r.texto || 'Texto indisponível.')}</p>${link}</div>
+    <p class="detail-text">${esc(r.texto || 'Texto indisponível.')}</p>${r.texto_completo && !r.textoCheio ? `<p class="muted loading-full">${r.falhaTexto ? 'Não foi possível carregar o texto completo agora.' : 'Carregando o texto completo…'}</p>` : ''}${link}</div>
     <div class="card"><div class="card-title"><h2>Informações</h2></div>${facts.map(([k, v]) => `<div class="fact"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}</div></div>`;
 }
 
@@ -484,6 +496,18 @@ function showTip(e, html) {
   tip.style.left = left + 'px'; tip.style.top = (e.clientY - 34) + 'px';
 }
 
+// Texto completo (data/textos/AAAA-MM-DD.json): baixa o arquivo do dia só quando alguém abre a notícia, uma vez por dia.
+const fullTexts = new Map();
+function loadFullText(r) {
+  const dia = String(r.data_publicacao || '').slice(0, 10);
+  if (!fullTexts.has(dia)) fullTexts.set(dia, getJSON(`data/textos/${dia}.json`).catch(() => null));
+  fullTexts.get(dia).then(mapa => {
+    const t = mapa && mapa[r.id];
+    if (t) { r.texto = cleanText(t); r.textoCheio = true; } else r.falhaTexto = true;
+    if (state.page === 'detail' && state.selected === r) render();
+  });
+}
+
 // ---------- navegação ----------
 function render() {
   const [t, s] = TITLES[state.page];
@@ -491,6 +515,8 @@ function render() {
   $('content').innerHTML = { home, feed, external, indicators, competitors }[state.page]?.() ?? detail(state.selected);
   document.querySelectorAll('.nav').forEach(x => x.classList.toggle('active', x.dataset.page === state.page));
   drawCharts();
+  const sel = state.selected;
+  if (state.page === 'detail' && sel?.texto_completo && !sel.textoCheio && !sel.falhaTexto) loadFullText(sel);
 }
 function go(page, push = true) {
   state.page = page; state.limit = PAGE_SIZE;
@@ -560,7 +586,13 @@ function onActivate(e) {
   const goEl = t.closest('[data-go]'); if (goEl) { go(goEl.dataset.go); return; }
   const th = t.closest('[data-theme]'); if (th) { $('category').value = th.dataset.theme; openAdvanced(); go('feed'); return; }
   const comp = t.closest('[data-company]'); if (comp) { $('company').value = comp.dataset.company; openAdvanced(); go('feed'); return; }
-  const n = t.closest('[data-id]'); if (n) { const id = n.dataset.id; state.selected = [...state.rows, ...state.alerts].find(r => r.id === id); go('detail'); }
+  const n = t.closest('[data-id]');
+  if (n) {
+    const id = n.dataset.id, r = [...state.rows, ...state.alerts].find(x => x.id === id);
+    // notícia do resumo que já saiu da janela do portal: abre a fonte original
+    if (!r && n.dataset.url) { window.open(n.dataset.url, '_blank', 'noopener'); return; }
+    state.selected = r; go('detail');
+  }
 }
 $('content').addEventListener('click', onActivate);
 $('content').addEventListener('keydown', e => { if (e.key === 'Enter') onActivate(e); });

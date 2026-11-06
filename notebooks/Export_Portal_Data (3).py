@@ -7,7 +7,7 @@
 # MAGIC # Export Portal Data
 # MAGIC
 # MAGIC Gera os arquivos do Portal IM em `public/data/`:
-# MAGIC `feed.json` (bot + projetos piloto), `feed_automotivo.json` (piloto automotivo), `manual.json` (notícias e alertas da equipe), `resumo.json`, `meta.json`, `distinct.json` e `indicadores.json` (este lê a tabela gerada pelo notebook `novoind_4_Intelligence`, que precisa rodar antes).
+# MAGIC `feed.json` (bot + projetos piloto), `textos/AAAA-MM-DD.json` (texto completo das notícias Infomet, um arquivo por dia), `feed_automotivo.json` (piloto automotivo), `manual.json` (notícias e alertas da equipe), `resumo.json` (resumo semanal da IA, ou o da equipe), `meta.json`, `distinct.json` e `indicadores.json` (este lê a tabela gerada pelo notebook `novoind_4_Intelligence`, que precisa rodar antes).
 # MAGIC No fim monta a mensagem diária do Teams.
 # MAGIC
 # MAGIC **Rode num cluster, não no serverless.**
@@ -21,6 +21,12 @@
 # Configuração
 TABLE = "lcb_qas_sandbox2_comercial.isabela_pereira.tb_noticias_classificadas"
 MANUAL_TABLE = "lcb_qas_sandbox2_comercial.isabela_pereira.tb_portal_conteudo_manual"
+# Título, fonte original e TEXTO COMPLETO das notícias Infomet. A tabela classificada guarda só o 1º pedaço (chunk) do texto,
+# com ~1.200 caracteres: por isso o portal mostrava a notícia cortada no meio da frase.
+SILVER_TABLE = "lcb_qas_sandbox2_comercial.isabela_pereira.tb_silver_news_chatbot_v1"
+TEXTO_COMPLETO = True   # False = volta a mostrar só o trecho (e não publica a pasta textos/)
+# Resumo semanal gerado pelo notebook Resumo_Semanal_IA (Llama). Se não houver, usa o resumo manual da equipe.
+RESUMO_IA_TABLE = "lcb_qas_sandbox2_comercial.isabela_pereira.tb_portal_resumo_semanal_ia"
 # Outras tabelas de notícias com o mesmo schema do bot (ex.: piloto automotivo).
 # Formato: {"Nome que aparece no portal": {"table": "catalogo.schema.tabela", "setor": "Setor padrão"}}
 EXTRA_NEWS_TABLES = {
@@ -35,6 +41,7 @@ SCORE_MIN_RELEVANTE_PORTAL = 5
 AUTOMOTIVO_TABLE = "hive_metastore.default.noticias_automotivebusiness_arcelormittal"
 AUTOMOTIVO_FONTES = ["automotivebusiness", "autodata"]   # o volume de keywords do LinkedIn fica de fora
 AUTOMOTIVO_RELEVANTES = ["Alta"]                          # o que vira "Relevante" no portal; inclua "Média" para mais volume
+AUTOMOTIVO_RAW_TABLE = "hive_metastore.default.noticias_automotivebusiness"   # base bruta: tem o texto completo (coluna conteudo)
 # Os JSONs são gerados FORA da pasta do Git: se ficassem em info-portal/public/data, a pasta do Git ficaria com
 # "mudanças locais" e o Databricks não conseguiria mais fazer checkout/pull ("Conflict checking out branch").
 # Quem leva os JSONs pro GitHub é o commit pela API do 00_atualizar_portal.
@@ -75,7 +82,7 @@ TEAMS_SECRET_KEY = "teams-webhook"
 
 # COMMAND ----------
 
-import json, os
+import json, os, re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from pyspark.sql import functions as F, Window
@@ -116,9 +123,35 @@ def news_df(table, projeto=None, setor=None):
     return df
 
 df = news_df(TABLE)
+# Título de verdade, fonte original e texto completo vêm da silver (mesmo id e source_type da classificada)
+textos = {}
+if spark.catalog.tableExists(SILVER_TABLE):
+    _sil = spark.table(SILVER_TABLE)
+    _cols = [c for c in ["titulo", "texto", "fonte"] if c in _sil.columns]
+    _sil = (_sil.select(F.col("id").cast("string").alias("id"), "source_type",
+                        *[F.col(c).alias(f"_silver_{c}") for c in _cols])
+                .dropDuplicates(["id", "source_type"]))
+    df = df.join(_sil, ["id", "source_type"], "left")
+else:
+    print(f"⚠️ {SILVER_TABLE} não encontrada: notícias Infomet seguem com o trecho e sem título.")
 for nome, spec in EXTRA_NEWS_TABLES.items():
     df = df.unionByName(news_df(spec["table"], nome, spec.get("setor")), allowMissingColumns=True)
-records = [r.asDict() for r in df.orderBy(F.desc("data_publicacao"), F.desc("id")).collect()]
+records = []
+for row in df.orderBy(F.desc("data_publicacao"), F.desc("id")).collect():
+    r = row.asDict()
+    titulo, texto, fonte = (str(r.pop(f"_silver_{c}", None) or "").strip() for c in ("titulo", "texto", "fonte"))
+    if titulo:
+        r["titulo"] = titulo
+    if fonte and fonte.upper() != "N/A":
+        r["fonte_original"] = fonte
+    # texto completo vai pro arquivo do dia (o portal só baixa quando a pessoa abre a notícia);
+    # o feed.json segue com o trecho, pra continuar leve
+    trecho = re.sub(r"\s+", " ", re.sub(r"^\s*\[Data de publica[cç][aã]o:[^\]]*\]\s*", "", str(r.get("text") or ""), flags=re.I)).strip()
+    texto = re.sub(r"\n{3,}", "\n\n", re.sub(r"[ \t\r\xa0]+", " ", texto)).strip()
+    if TEXTO_COMPLETO and r.get("data_publicacao") and len(re.sub(r"\s+", " ", texto)) > len(trecho) + 20:
+        textos.setdefault(str(r["data_publicacao"])[:10], {})[r["id"]] = texto
+        r["texto_completo"] = True
+    records.append(r)
 
 # feed.json usa o corte do portal; "records" (usado na mensagem do Teams lá embaixo) fica com a relevância original do job.
 def _relevancia_portal(r):
@@ -144,13 +177,17 @@ def _slug(txt):
 
 try:
     fontes_sql = ", ".join(f"'{f}'" for f in AUTOMOTIVO_FONTES)
+    # texto completo vem da base bruta (o scraper grava em "conteudo" desde 06/11); antes disso a coluna não existe
+    tem_conteudo = TEXTO_COMPLETO and spark.catalog.tableExists(AUTOMOTIVO_RAW_TABLE) and "conteudo" in spark.table(AUTOMOTIVO_RAW_TABLE).columns
     auto_rows = spark.sql(f"""
-        SELECT id, fonte_site, titulo, resumo, link, data, coletado_em,
-               relevancia, score_relevancia, empresa_principal, categoria_principal
-        FROM {AUTOMOTIVO_TABLE}
-        WHERE fonte_site IN ({fontes_sql})
-          AND to_date(to_timestamp(data)) >= date_sub(current_date(), {EXPORT_DAYS})
-          AND titulo IS NOT NULL AND trim(titulo) <> ''
+        SELECT c.id, c.fonte_site, c.titulo, c.resumo, c.link, c.data, c.coletado_em,
+               c.relevancia, c.score_relevancia, c.empresa_principal, c.categoria_principal,
+               {"r.conteudo" if tem_conteudo else "CAST(NULL AS STRING)"} AS conteudo
+        FROM {AUTOMOTIVO_TABLE} c
+        {f"LEFT JOIN {AUTOMOTIVO_RAW_TABLE} r ON c.id = r.id AND c.fonte_site = r.fonte_site" if tem_conteudo else ""}
+        WHERE c.fonte_site IN ({fontes_sql})
+          AND to_date(to_timestamp(c.data)) >= date_sub(current_date(), {EXPORT_DAYS})
+          AND c.titulo IS NOT NULL AND trim(c.titulo) <> ''
     """).collect()
     auto = {}
     for r in auto_rows:
@@ -168,14 +205,37 @@ try:
             "empresa_principal": r["empresa_principal"] or "nenhuma",
             "classificado_em": r["coletado_em"], "setor": "Automotivo", "projeto": "Piloto automotivo",
         }
+        conteudo = (r["conteudo"] or "").strip()
+        if len(conteudo) > len(item["text"]) + 20:
+            item["texto_completo"] = True
+            item["_conteudo"] = conteudo
         chave = item["url"] or item["id"]          # mesmo link nas duas fontes: fica o de maior score
         if chave not in auto or item["score_relevancia"] > auto[chave]["score_relevancia"]:
             auto[chave] = item
+    for item in auto.values():
+        if item.get("_conteudo"):
+            textos.setdefault(item["data_publicacao"], {})[item["id"]] = item.pop("_conteudo")
     auto_records = sorted(auto.values(), key=lambda x: x["data_publicacao"], reverse=True)
     write_json("feed_automotivo.json", auto_records)
     print(f"✅ feed_automotivo.json: {len(auto_records)} notícias ({sum(a['relevancia'] == 'RELEVANTE' for a in auto_records)} relevantes)")
 except Exception as e:
     print(f"⚠️ feed_automotivo.json não atualizado ({type(e).__name__}: {str(e)[:200]}). O portal segue com o arquivo anterior.")
+
+# COMMAND ----------
+
+# textos/AAAA-MM-DD.json: {id: texto completo} das notícias Infomet e automotivas. Um arquivo por dia de publicação; os dias que saíram da janela são apagados.
+TEXTOS_DIR = f"{OUTPUT_DIR}/textos"
+os.makedirs(TEXTOS_DIR, exist_ok=True)
+for dia, mapa in textos.items():
+    write_json(f"textos/{dia}.json", mapa)
+for arq in os.listdir(TEXTOS_DIR):
+    if arq.endswith(".json") and arq[:-5] not in textos:
+        os.remove(f"{TEXTOS_DIR}/{arq}")
+_com_titulo = sum(bool(r.get("titulo")) for r in records)
+_n_auto = sum(i.startswith("auto-") for m in textos.values() for i in m)
+print(f"✅ textos/: {sum(len(m) for m in textos.values())} notícias com texto completo ({_n_auto} automotivas) em {len(textos)} arquivos · {_com_titulo} com título da fonte"
+      + ("" if TEXTO_COMPLETO else " (TEXTO_COMPLETO = False)"))
+
 
 # COMMAND ----------
 
@@ -201,6 +261,16 @@ else:
     print(f"⚠️ Tabela {MANUAL_TABLE} ainda não existe: rode o notebook 'Incluir Conteúdo Manual' uma vez.")
 
 write_json("manual.json", manual)
+# Resumo semanal da IA (notebook Resumo_Semanal_IA) tem preferência; o resumo manual só entra se for mais novo que a semana da IA.
+try:
+    if spark.catalog.tableExists(RESUMO_IA_TABLE):
+        _ia = spark.table(RESUMO_IA_TABLE).orderBy(F.desc("semana_fim"), F.desc("gerado_em")).limit(1).collect()
+        if _ia:
+            _ia = json.loads(_ia[0]["conteudo"])
+            if not resumo or str(resumo.get("data_publicacao") or "") <= _ia.get("semana_fim", ""):
+                resumo = _ia
+except Exception as e:
+    print(f"⚠️ Resumo da IA não lido ({type(e).__name__}: {str(e)[:200]}). Segue com o resumo manual, se houver.")
 if resumo:
     write_json("resumo.json", resumo)
 elif os.path.exists(f"{OUTPUT_DIR}/resumo.json"):
@@ -564,4 +634,5 @@ for fname in DATA_FILES:
     if os.path.exists(p):
         print(f"  {fname}: {os.path.getsize(p) / (1024 * 1024):.2f} MB")
 print(f"\n📁 Arquivos em: {OUTPUT_DIR}")
+
 

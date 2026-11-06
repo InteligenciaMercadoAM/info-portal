@@ -6,8 +6,9 @@
 # MAGIC    "1- Pipeline Medallion" e "2- Classifica + Envia Teams", que também mandam as notícias pro Teams.
 # MAGIC 2. **Automotivo:** scraping + classificação com o prompt automotivo (`noticias_automotivebusiness_arcelormittal`)
 # MAGIC 3. **4intelligence:** indicadores, realizado + projeção (`novoind_4_Intelligence...`)
-# MAGIC 4. **Export** dos JSONs do portal (notícias, piloto automotivo, conteúdo manual, indicadores)
-# MAGIC 5. **Um commit só** no GitHub com os arquivos que mudaram. O Netlify publica sozinho em ~1 minuto.
+# MAGIC 4. **Resumo semanal com IA** (Llama, notebook `Resumo_Semanal_IA`): só gera quando a semana muda, nos outros dias sai em segundos
+# MAGIC 5. **Export** dos JSONs do portal (notícias, textos completos, piloto automotivo, conteúdo manual, resumo, indicadores)
+# MAGIC 6. **Um commit só** no GitHub com os arquivos que mudaram. O Netlify publica sozinho em ~1 minuto.
 # MAGIC
 # MAGIC Cada fonte é independente: se uma falhar (ex.: login da 4i vencido, site fora do ar), as outras seguem
 # MAGIC e o portal é publicado com o que deu certo. No fim, o notebook falha de propósito pra avisar
@@ -86,12 +87,22 @@ FONTES = {
             60,
         ),
     ],
+
+    # Roda depois das notícias, porque resume o que elas trouxeram
+    "Resumo semanal IA": [
+        (
+            "resumo da semana (Llama)",
+            f"{PORTAL_NOTEBOOKS_DIR}/Resumo_Semanal_IA",
+            30,
+        ),
+    ],
 }
 
 RODAR = {
     "Infomet": False,
     "Automotivo": True,
     "4intelligence": True,
+    "Resumo semanal IA": True,
 }
 
 # Parâmetro usado pelo notebook "Incluir_Conteudo_Manual" (botão "Publicar no portal agora?"):
@@ -125,6 +136,8 @@ ARQUIVOS = [
     "distinct.json",
     "indicadores.json",
 ]
+# Texto completo das notícias: um arquivo por dia em textos/ (o Export cria e apaga os que saem da janela de 90 dias)
+PASTA_TEXTOS = "textos"
 
 FAZER_COMMIT = True  # False gera os arquivos sem publicar
 
@@ -204,7 +217,30 @@ else:
     except RuntimeError:
         no_github = {}
 
+    try:
+        no_github_textos = {f["name"]: f["sha"] for f in gh("GET", f"/contents/{GITHUB_DATA_PATH}/{PASTA_TEXTOS}", params={"ref": GITHUB_BRANCH})}
+    except RuntimeError:
+        no_github_textos = {}
+    pasta_textos_local = f"{OUTPUT_DIR}/{PASTA_TEXTOS}"
+    textos_locais = sorted(f for f in os.listdir(pasta_textos_local) if f.endswith(".json")) if os.path.isdir(pasta_textos_local) else []
+
     entradas, mudaram = [], []
+    n_textos = 0
+    for nome in textos_locais:
+        conteudo = open(f"{pasta_textos_local}/{nome}", "rb").read()
+        if no_github_textos.get(nome) == git_blob_sha(conteudo):
+            continue
+        blob = gh("POST", "/git/blobs", json={"content": base64.b64encode(conteudo).decode(), "encoding": "base64"})
+        entradas.append({"path": f"{GITHUB_DATA_PATH}/{PASTA_TEXTOS}/{nome}", "mode": "100644", "type": "blob", "sha": blob["sha"]})
+        n_textos += 1
+    # dias que saíram da janela (ou TEXTO_COMPLETO = False no Export): some do GitHub também
+    # (só apaga se o Export criou a pasta nesta máquina, pra nunca limpar tudo por engano)
+    if os.path.isdir(pasta_textos_local):
+        for nome in set(no_github_textos) - set(textos_locais):
+            entradas.append({"path": f"{GITHUB_DATA_PATH}/{PASTA_TEXTOS}/{nome}", "mode": "100644", "type": "blob", "sha": None})
+            n_textos += 1
+    if n_textos:
+        mudaram.append(f"{PASTA_TEXTOS}/: {n_textos} arquivo(s) de texto completo")
     for nome in ARQUIVOS:
         caminho_local = f"{OUTPUT_DIR}/{nome}"
         if not os.path.exists(caminho_local):

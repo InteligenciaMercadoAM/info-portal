@@ -8,7 +8,7 @@
 # MAGIC Como funciona:
 # MAGIC 1. Junta as notícias **relevantes** da semana: Infomet com score >= 5 (mesmo corte do portal), automotivo "Alta" e o conteúdo manual da equipe (notícias e alertas).
 # MAGIC 2. Pede ao Llama **uma frase** por notícia (fica guardada numa tabela, então cada notícia só é resumida uma vez).
-# MAGIC 3. Pede ao Llama de 3 a 5 **destaques da semana**, cada um apontando quais notícias o sustentam.
+# MAGIC 3. Pede ao Llama de 3 a 5 **destaques da semana**: manchete informativa + 2 ou 3 frases com números e o que significa pro mercado de aços longos, cada um apontando quais notícias o sustentam.
 # MAGIC 4. Confere a resposta (descarta id inventado, destaque sem notícia) e grava na tabela `RESUMO_IA_TABLE`.
 # MAGIC
 # MAGIC O `Export_Portal_Data` lê essa tabela e gera o `resumo.json`. No portal, cada destaque abre a lista de notícias e cada notícia abre o texto completo.
@@ -195,23 +195,32 @@ print(f"✅ Frases prontas ({len(noticias) - len(faltam)} do cache)")
 # COMMAND ----------
 
 # ===================== 3) DESTAQUES DA SEMANA =====================
-PROMPT_SEMANA = f"""Você é analista de inteligência de mercado da ArcelorMittal Aços Longos no Brasil (vergalhão, fio-máquina, perfis, barras e trefilados; clientes em construção civil, indústria, agro e automotivo).
-Abaixo estão as notícias relevantes da semana de {ini:%d/%m/%Y} a {fim:%d/%m/%Y}, uma por linha, no formato [ID] (data · fonte) título: resumo.
+PROMPT_SEMANA = f"""Você é analista sênior de inteligência de mercado da ArcelorMittal Aços Longos no Brasil (vergalhão, fio-máquina, perfis, barras e trefilados; clientes em construção civil, indústria, agro e automotivo).
+Abaixo estão as notícias relevantes da semana de {ini:%d/%m/%Y} a {fim:%d/%m/%Y}. Cada uma vem como [ID] (data · fonte) título, seguido de um resumo e de um trecho do texto.
 
-Escreva o resumo semanal MAIS ENXUTO possível: {N_DESTAQUES} destaques, do mais importante para o menos importante para o negócio de aços longos.
-Regras:
-- Agrupe notícias sobre o mesmo assunto num destaque só.
-- "titulo": no máximo 8 palavras.
-- "resumo": UMA frase de no máximo 30 palavras, com o número mais importante se houver.
+Escreva o resumo semanal para a diretoria: {N_DESTAQUES} destaques, do mais importante para o menos importante para o negócio de aços longos.
+
+Regras para cada destaque:
+- "titulo": uma manchete informativa de 6 a 12 palavras que diga QUEM fez O QUÊ (ex.: "Gerdau tem lucro 40% maior no 3º trimestre com alta do vergalhão"). Nunca use só um tema solto como "Gerdau", "Infraestrutura" ou "Aço bruto".
+- "resumo": 2 ou 3 frases completas (40 a 70 palavras no total). Diga o fato principal com os números das notícias (volumes, percentuais, valores, prazos), cite as empresas, órgãos ou regiões envolvidos e termine com o que isso significa para o mercado de aços longos (demanda, preço, concorrência, importação). Se as notícias não permitirem tirar uma implicação, não invente: só descreva os fatos.
 - "ids": os IDs (exatamente como aparecem entre colchetes) das notícias que sustentam o destaque, de 1 a 6.
-- Use só informação das notícias. Não invente números, empresas nem fatos.
-- Português do Brasil.
+- Agrupe notícias sobre o mesmo assunto num destaque só, juntando os números de todas elas.
+- Use só informação das notícias. Não invente números, empresas, datas nem fatos.
+- Escreva em português do Brasil, em tom de relatório executivo, sem adjetivos vazios ("importante", "significativo") e sem repetir o título no resumo.
+
+Exemplo de destaque RUIM: {{"titulo": "Infraestrutura", "resumo": "Investimentos em ferrovias", "ids": ["1"]}}
+Exemplo de destaque BOM (só mostra o formato; os fatos são fictícios e NÃO podem aparecer na resposta): {{"titulo": "Governo leiloa dois trechos ferroviários em dezembro", "resumo": "O Ministério dos Transportes marcou para dezembro os leilões da Ferrogrão e do trecho Leste da FICO, com investimento previsto de R$ 28 bilhões em 35 anos. As obras demandam trilhos, perfis e vergalhão para pontes e terminais, o que reforça a demanda por aços longos a partir de 2027.", "ids": ["1", "2"]}}
+
 Responda APENAS com JSON válido, sem texto antes ou depois, neste formato:
 {{"destaques": [{{"titulo": "...", "resumo": "...", "ids": ["..."]}}]}}
 
 Notícias:
 """
-linhas = "\n".join(f"[{n['id']}] ({n['data_publicacao'][8:10]}/{n['data_publicacao'][5:7]} · {n['fonte']}) {n['titulo']}: {n['resumo']}" for n in noticias)
+TRECHO_CHARS = 500   # quanto do texto de cada notícia vai junto da frase, pra o modelo ter números e contexto
+linhas = "\n\n".join(
+    f"[{n['id']}] ({n['data_publicacao'][8:10]}/{n['data_publicacao'][5:7]} · {n['fonte']}) {n['titulo']}\n"
+    f"Resumo: {n['resumo']}\nTrecho: {n['texto'][:TRECHO_CHARS]}"
+    for n in noticias)
 por_id = {n["id"]: n for n in noticias}
 
 def interpreta(resp):
@@ -237,11 +246,15 @@ def interpreta(resp):
     return destaques
 
 destaques = []
-for tentativa in range(2):
-    destaques = interpreta(llm([PROMPT_SEMANA + linhas], max_tokens=1500)[0])
-    if len(destaques) >= 2:
+for tentativa in range(3):
+    novos = interpreta(llm([PROMPT_SEMANA + linhas], max_tokens=3000)[0])
+    curtos = [d["titulo"] for d in novos if len(d["resumo"].split()) < 25 or len(d["titulo"].split()) < 4]
+    if len(novos) >= 2 and not curtos:
+        destaques = novos
         break
-    print(f"⚠️ Resposta do modelo não veio no formato esperado (tentativa {tentativa + 1}).")
+    if len(novos) >= 2 and not destaques:
+        destaques = novos   # guarda a melhor até agora, caso as próximas também venham curtas
+    print(f"⚠️ Tentativa {tentativa + 1}: " + (f"destaques curtos demais {curtos}" if novos else "resposta fora do formato esperado"))
 if not destaques:
     raise RuntimeError("O Llama não devolveu um resumo válido em 2 tentativas. O portal segue com o resumo anterior.")
 

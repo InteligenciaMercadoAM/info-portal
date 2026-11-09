@@ -45,8 +45,9 @@ AUTOMOTIVO_RAW_TABLE = "hive_metastore.default.noticias_automotivebusiness"   # 
 # Os JSONs são gerados FORA da pasta do Git: se ficassem em info-portal/public/data, a pasta do Git ficaria com
 # "mudanças locais" e o Databricks não conseguiria mais fazer checkout/pull ("Conflict checking out branch").
 # Quem leva os JSONs pro GitHub é o commit pela API do 00_atualizar_portal.
-OUTPUT_DIR = "/Workspace/Users/isabela.pereira@arcelormittal.com.br/portal_dados"   # tem que ser igual ao OUTPUT_DIR do 00_atualizar_portal
-CONFIG_PATH = "/Workspace/Users/isabela.pereira@arcelormittal.com.br/info-portal/public/config.json"
+# Pastas no usuário da Vanessa (06/11). As tabelas seguem no schema isabela_pereira até a Vanessa ter schema próprio.
+OUTPUT_DIR = "/Workspace/Users/vanessa.n.silva@arcelormittal.com.br/portal_dados"   # tem que ser igual ao OUTPUT_DIR do 00_atualizar_portal
+CONFIG_PATH = "/Workspace/Users/vanessa.n.silva@arcelormittal.com.br/info-portal/public/config.json"
 PORTAL_URL = "https://imview.netlify.app"
 
 # Tabelas geradas pelo notebook novoind_4_Intelligence (TABELA_FINAL e TABELA_PROJ de lá). Se o nome mudar lá, mude aqui também.
@@ -634,5 +635,4 @@ for fname in DATA_FILES:
     if os.path.exists(p):
         print(f"  {fname}: {os.path.getsize(p) / (1024 * 1024):.2f} MB")
 print(f"\n📁 Arquivos em: {OUTPUT_DIR}")
-
 

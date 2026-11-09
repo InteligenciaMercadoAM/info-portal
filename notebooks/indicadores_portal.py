@@ -9,6 +9,7 @@
 # MAGIC - `serie`: coluna **Unidade**. `"#"` = série em nível (o número do indicador); `"var"` = variação contra o período anterior (% m/m, % t/t).
 # MAGIC - `projecao`: `False` só quando a planilha pede pra tirar (Dólar). O resto sempre tenta trazer a projeção da 4i.
 # MAGIC - `unidade` / `casas`: só para as séries em nível. Nas de variação a unidade sai da frequência (% m/m, % t/t).
+# MAGIC - `frequencia` (opcional): `"M"` mensal, `"Q"` trimestral, `"Y"` anual. Trava a frequência da série, mesmo que a projeção da 4i só exista em outra.
 # MAGIC
 # MAGIC Ao mudar algo aqui, mude também o `indicadores_nomes` do `public/config.json` (o site usa essa lista pra filtrar e nomear).
 
@@ -23,9 +24,9 @@ INDICADORES = [
     {"code": "BRGDP0013", "nome": "PIB FBKF",           "serie": "var", "setor": "Macroeconomia",    "fonte_original": "IBGE"},
 
     # ---------- Produção industrial (PIM-PF, variação m/m) ----------
-    {"code": "BRIND0001", "nome": "Produção Industrial Total",          "serie": "var", "setor": "Indústria",        "fonte_original": "IBGE"},
-    {"code": "BRIND0003", "nome": "Produção Industrial Transformação",  "serie": "var", "setor": "Indústria",        "fonte_original": "IBGE"},
-    {"code": "BRIND0029", "nome": "Bens de Capital",                    "serie": "var", "setor": "Indústria",        "fonte_original": "IBGE"},
+    {"code": "BRIND0001", "nome": "Produção Industrial Total",          "serie": "var", "setor": "Indústria",        "fonte_original": "IBGE", "frequencia": "M"},
+    {"code": "BRIND0003", "nome": "Produção Industrial Transformação",  "serie": "var", "setor": "Indústria",        "fonte_original": "IBGE", "frequencia": "M"},
+    {"code": "BRIND0029", "nome": "Bens de Capital",                    "serie": "var", "setor": "Indústria",        "fonte_original": "IBGE", "frequencia": "M"},
     # Planilha traz BRIND0251, mas na 4i esse código é "Produção de Eletrodomésticos". O de fogões/refrigeradores/máquinas de lavar é o BRIND0368.
     {"code": "BRIND0368", "nome": "Produção de Linha Branca",           "serie": "var", "setor": "Indústria",        "fonte_original": "IBGE"},
     {"code": "BRIND0420", "nome": "Insumos da Construção",              "serie": "var", "setor": "Construção civil", "fonte_original": "IBGE"},
@@ -35,7 +36,7 @@ INDICADORES = [
     {"code": "BRIND0055", "nome": "Anfavea - Produção Total",     "serie": "#", "setor": "Automotivo", "fonte_original": "Anfavea", "unidade": "unidades", "casas": 0},
     {"code": "BRIND0070", "nome": "Anfavea - Produção Caminhões", "serie": "#", "setor": "Automotivo", "fonte_original": "Anfavea", "unidade": "unidades", "casas": 0},
     {"code": "BRIND0075", "nome": "Anfavea - Produção Ônibus",    "serie": "#", "setor": "Automotivo", "fonte_original": "Anfavea", "unidade": "unidades", "casas": 0},
-    {"code": "BRRTL0053", "nome": "Anfavea - Vendas Totais",      "serie": "#", "setor": "Automotivo", "fonte_original": "Anfavea", "unidade": "unidades", "casas": 0},
+    {"code": "BRRTL0053", "nome": "Anfavea - Vendas Totais",      "serie": "#", "setor": "Automotivo", "fonte_original": "Anfavea", "unidade": "unidades", "casas": 0, "frequencia": "M"},
     {"code": "BRRTL0062", "nome": "Anfavea - Vendas Caminhões",   "serie": "#", "setor": "Automotivo", "fonte_original": "Anfavea", "unidade": "unidades", "casas": 0},
     {"code": "BRRTL0065", "nome": "Anfavea - Vendas Ônibus",      "serie": "#", "setor": "Automotivo", "fonte_original": "Anfavea", "unidade": "unidades", "casas": 0},
 
@@ -63,7 +64,9 @@ INDICADORES = [
     {"code": "BRPRC0033", "nome": "INCC-M",                           "serie": "var", "setor": "Construção civil", "fonte_original": "FGV",  "polaridade": -1},
     {"code": "BRPRC0024", "nome": "IGP-M",                            "serie": "var", "setor": "Macroeconomia",    "fonte_original": "FGV",  "polaridade": -1},
     {"code": "BRSTK0005", "nome": "IBOVESPA - Fechamento Mensal",     "serie": "#",   "setor": "Macroeconomia",    "fonte_original": "B3", "unidade": "pontos", "casas": 0},
-    {"code": "BRINR0012", "nome": "Selic (% a.a.)",                 "serie": "#",   "setor": "Macroeconomia",    "fonte_original": "Banco Central do Brasil", "unidade": "% a.a.", "casas": 2, "polaridade": -1},
+    # Selic: Meta (BRINR0010), a taxa do Copom (ex.: 15% a.a.). A Efetiva (BRINR0012), que a planilha marcava, vinha na série
+    # acumulada em 12 meses, com atraso de vários meses em relação à taxa vigente (06/11). A planilha já citava a Meta como alternativa.
+    {"code": "BRINR0010", "nome": "Selic (% a.a.)",                 "serie": "#",   "setor": "Macroeconomia",    "fonte_original": "Banco Central do Brasil", "unidade": "% a.a.", "casas": 2, "polaridade": -1},
 ]
 
 # Marcados com x na planilha mas ainda sem código na 4i (ficam fora até alguém achar a série):
@@ -77,4 +80,7 @@ assert len(_codes) == len(set(_codes)), f"código repetido em INDICADORES: {sort
 assert all(i["serie"] in ("#", "var") for i in INDICADORES), "serie tem que ser '#' (nível) ou 'var' (variação)"
 TIPO_SERIE = {i["code"]: i["serie"] for i in INDICADORES}                       # code -> '#' ou 'var'
 SEM_PROJECAO = {i["code"] for i in INDICADORES if i.get("projecao") is False}    # não baixa/mostra projeção
-
+# Frequência travada só onde a "frequencia" está na linha do indicador (06/11: Bens de Capital, PIM Total/Transformação e
+# Anfavea Vendas Totais vinham trimestrais porque a 4i só tinha projeção na trimestral). Os demais seguem a regra normal.
+FREQ_SERIE = {i["code"]: i["frequencia"] for i in INDICADORES if i.get("frequencia")}   # code -> 'M' | 'Q' | 'Y' (trava a frequência)
+assert set(FREQ_SERIE.values()) <= set("MQY"), "frequencia tem que ser 'M', 'Q' ou 'Y'"

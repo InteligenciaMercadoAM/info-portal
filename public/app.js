@@ -523,10 +523,12 @@ function go(page, push = true) {
   if (push) history.pushState(null, '', page === 'detail' && state.selected ? `#noticia/${encodeURIComponent(state.selected.id)}` : `#${page}`);
   render(); window.scrollTo(0, 0);
 }
+// Páginas escondidas pelo config.json (portal.paginas_ocultas, ex.: ["external"]): some o botão e o link direto cai na home.
+const hiddenPage = p => (C.portal?.paginas_ocultas || []).includes(p);
 function fromHash() {
   const h = decodeURIComponent(location.hash.slice(1));
   if (h.startsWith('noticia/')) { const id = h.slice(8); state.selected = [...state.rows, ...state.alerts].find(r => r.id === id) || null; state.page = 'detail'; }
-  else state.page = TITLES[h] && h !== 'detail' ? h : 'home';
+  else state.page = TITLES[h] && h !== 'detail' && !hiddenPage(h) ? h : 'home';
   render();
 }
 
@@ -542,6 +544,7 @@ async function load() {
   $('updated').textContent = 'Carregando...';
   try {
     C = await getJSON('config.json', true); buildRules(); resetFilters();
+    document.querySelectorAll('.nav').forEach(b => { b.hidden = hiddenPage(b.dataset.page); });
     const opt = n => getJSON('data/' + n).catch(e => { console.warn(`data/${n}:`, e.message); return null; });
     const [bot, manual, ind, resumo, meta, auto] = await Promise.all([getJSON('data/feed.json', true), opt('manual.json'), opt('indicadores.json'), opt('resumo.json'), opt('meta.json'), opt('feed_automotivo.json')]);
     if (!Array.isArray(bot)) throw new Error('data/feed.json deve ser uma lista de notícias.');

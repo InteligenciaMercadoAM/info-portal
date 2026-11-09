@@ -17,7 +17,8 @@
 # MAGIC **Rode num cluster, não no serverless.**
 # MAGIC
 # MAGIC **Pra agendar:** botão **Schedule** (canto superior direito) → diário, dias úteis, **depois** do horário em que o job "2- Classifica + Envia Teams" termina.
-# MAGIC Precisa rodar como a Isabela, porque o token da 4i fica na pasta dela.
+# MAGIC Precisa rodar como a Vanessa (dona das pastas abaixo), e o login da 4i (`token_4i`) tem que ter sido feito com o usuário dela: o token fica na pasta pessoal de quem roda.
+# MAGIC As tabelas continuam no schema `isabela_pereira` (a Vanessa ainda não tem schema próprio): ela precisa de permissão de leitura e escrita nele.
 # MAGIC Se um dia ligar o Infomet aqui, desligue os jobs 1 e 2, senão tudo roda duas vezes.
 
 # COMMAND ----------
@@ -31,13 +32,13 @@ SECRET_SCOPE, SECRET_KEY = "portal-im", "github-token"
 
 # Pasta do pipeline Infomet
 PIPELINE_DIR = (
-    "/Workspace/Users/isabela.pereira@arcelormittal.com.br/"
+    "/Workspace/Users/vanessa.n.silva@arcelormittal.com.br/"
     "chatbot_v3 (final)/pipeline"
 )
 
 # Pasta dos notebooks do portal
 PORTAL_NOTEBOOKS_DIR = (
-    "/Workspace/Users/isabela.pereira@arcelormittal.com.br/"
+    "/Workspace/Users/vanessa.n.silva@arcelormittal.com.br/"
     "info-portal/notebooks"
 )
 
@@ -123,7 +124,7 @@ NB_EXPORT = f"{PORTAL_NOTEBOOKS_DIR}/Export_Portal_Data (3)"
 # Diretório onde o Export grava os JSONs.
 # Deve ser o mesmo OUTPUT_DIR definido no notebook Export.
 OUTPUT_DIR = (
-    "/Workspace/Users/isabela.pereira@arcelormittal.com.br/"
+    "/Workspace/Users/vanessa.n.silva@arcelormittal.com.br/"
     "portal_dados"
 )
 

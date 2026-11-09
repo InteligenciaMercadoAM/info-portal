@@ -275,4 +275,3 @@ for d in destaques:
     for n in d["noticias"]:
         print(f"    - [{n['id']}] {n['titulo'][:90]}")
 dbutils.notebook.exit(f"{len(destaques)} destaques, {len(noticias)} notícias")
-

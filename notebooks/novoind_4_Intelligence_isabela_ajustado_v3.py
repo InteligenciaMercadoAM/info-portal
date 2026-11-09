@@ -220,6 +220,14 @@ if spark.catalog.tableExists(TABELA_STAGE):
         print("Stage com série de variação em indicador de nível (regra antiga), começando do zero:", _incoerentes)
         spark.sql(f"DROP TABLE {TABELA_STAGE}")
 
+# stage com série de frequência diferente da travada no indicadores_portal (ex.: Bens de Capital trimestral): começa do zero
+if spark.catalog.tableExists(TABELA_STAGE) and globals().get("FREQ_SERIE"):
+    _freq_errada = sorted({r[0] for r in spark.table(TABELA_STAGE).select("indicator_code", "serie_code").distinct().collect()
+                           if r[0] in FREQ_SERIE and str(r[1]).split(" ")[0][-2:-1] != FREQ_SERIE[r[0]]})
+    if _freq_errada:
+        print("Stage com série de frequência diferente da pedida, começando do zero:", _freq_errada)
+        spark.sql(f"DROP TABLE {TABELA_STAGE}")
+
 if RETOMAR and spark.catalog.tableExists(TABELA_STAGE):
     ja_baixados = {r[0] for r in spark.table(TABELA_STAGE).select("indicator_code").distinct().collect()}
 elif spark.catalog.tableExists(TABELA_STAGE):
@@ -324,6 +332,10 @@ def _par(codigo, codigos, transf):
 def _escolher_series(indicador, codigos, tipo, com_proj):
     """Devolve (série do realizado, série da projeção, conversão), conversão em {None, 'var_de_nivel', 'nivel_de_var'}."""
     codigos = [c for c in codigos if c]
+    # frequência travada no indicadores_portal (ex.: Bens de Capital mensal): só concorrem séries dessa frequência
+    freq = globals().get("FREQ_SERIE", {}).get(indicador)
+    if freq and any(c[-2] == freq for c in codigos):
+        codigos = [c for c in codigos if c[-2] == freq]
     if indicador in SERIE_FORCADA:
         return SERIE_FORCADA[indicador], SERIE_FORCADA[indicador], None
     alvo, outro = ("L", "M") if tipo == "#" else ("M", "L")
@@ -565,7 +577,15 @@ for dia in sorted(set(_dias)) if _status == 200 else []:
                 _cal.append(x)
 _tipos = sorted({str(x.get('type')) for x in _cal})
 print(f"Dias com divulgação na agenda 4i até {_fim}: {len(set(_dias))} (último: {max(_dias) if _dias else '-'})")
-_nossos = [x for x in _cal if x.get('indicator_code') in set(lista_ind)]
+# Só a divulgação nacional: no código da série, os 3 caracteres depois do indicador são a região ("000" = Brasil).
+# Ex.: em 11/11 a 4i lista a PIM regional (séries dos estados) com o código BRIND0001, e aparecia como "Produção Industrial Total".
+def _nacional(x):
+    ind, serie = str(x.get('indicator_code') or ''), str(x.get('series_code') or '')
+    return not serie.startswith(ind) or serie[len(ind):len(ind) + 3] == '000'
+_regionais = [x for x in _cal if x.get('indicator_code') in set(lista_ind) and not _nacional(x)]
+if _regionais:
+    print(f"Ignoradas {len(_regionais)} divulgações regionais:", sorted({f"{x['indicator_code']} {str(x['time'])[:10]}" for x in _regionais}))
+_nossos = [x for x in _cal if x.get('indicator_code') in set(lista_ind) and _nacional(x)]
 print(f"Calendário 4i: {len(_cal)} eventos em {DIAS_CALENDARIO} dias (tipos: {_tipos}); {len(_nossos)} dos indicadores do portal")
 _linhas_cal = [(x['indicator_code'], x.get('series_code'), str(x['time']), str(x.get('type')),
                 ((x.get('indicator_name') or {}).get('pt-br') if isinstance(x.get('indicator_name'), dict) else x.get('indicator_name')),

@@ -8,7 +8,8 @@
     "itens_agenda": 5,
     "mostrar_termometro": false,
     "indicadores_na_home": 5,
-    "dias_dado_novo": 7
+    "dias_dado_novo": 7,
+    "paginas_ocultas": ["external"]
   },
 
   "indicadores_nomes": {
@@ -45,7 +46,7 @@
     "BRPRC0033": "INCC-M",
     "BRPRC0024": "IGP-M",
     "BRSTK0005": "IBOVESPA - Fechamento Mensal",
-    "BRINR0012": "Selic (% a.a.)"
+    "BRINR0010": "Selic (% a.a.)"
   },
   "indicadores_somente_lista": true,
 

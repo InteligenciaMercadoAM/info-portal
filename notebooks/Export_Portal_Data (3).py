@@ -7,7 +7,7 @@
 # MAGIC # Export Portal Data
 # MAGIC
 # MAGIC Gera os arquivos do Portal IM em `public/data/`:
-# MAGIC `feed.json` (bot + projetos piloto), `textos/AAAA-MM-DD.json` (texto completo das notícias Infomet, um arquivo por dia), `feed_automotivo.json` (piloto automotivo), `manual.json` (notícias e alertas da equipe), `resumo.json` (resumo semanal da IA, ou o da equipe), `meta.json`, `distinct.json` e `indicadores.json` (este lê a tabela gerada pelo notebook `novoind_4_Intelligence`, que precisa rodar antes).
+# MAGIC `feed.json` (bot + projetos piloto), `textos/AAAA-MM-DD.json` (texto completo das notícias Infomet, um arquivo por dia), `feed_automotivo.json` (piloto automotivo), `manual.json` (notícias e alertas da equipe), `resumo.json` (resumo semanal da IA, ou o da equipe), `meta.json`, `distinct.json`, `ptax.json` (cotação do dólar PTAX: fechamento do dia e médias do mês) e `indicadores.json` (este lê a tabela gerada pelo notebook `novoind_4_Intelligence`, que precisa rodar antes).
 # MAGIC No fim monta a mensagem diária do Teams.
 # MAGIC
 # MAGIC **Rode num cluster, não no serverless.**
@@ -55,6 +55,9 @@ INDICADORES_TABLE = "lcb_qas_sandbox2_comercial.isabela_pereira.indicadores_lt_2
 INDICADORES_PROJ_TABLE = "lcb_qas_sandbox2_comercial.isabela_pereira.indicadores_lt_20260113_projecoes"
 INDICADORES_ATUALIZACAO_TABLE = "lcb_qas_sandbox2_comercial.isabela_pereira.indicadores_4i_atualizacao"   # TABELA_ATUALIZACAO do novoind
 INDICADORES_CALENDARIO_TABLE = "lcb_qas_sandbox2_comercial.isabela_pereira.indicadores_4i_calendario"     # TABELA_CALENDARIO do novoind
+# Dólar PTAX (card da home): cotação de cada dia (data_hora_cotacao em UTC) e médias mensais (mes_fechado = false é o mês corrente, parcial)
+PTAX_DIARIO_TABLE = "lcb_qas_sandbox2_comercial.isabela_pereira.historico_completo_ptax"
+PTAX_MENSAL_TABLE = "lcb_qas_sandbox2_comercial.isabela_pereira.media_mensal_ptax"
 # Regra do portal (planilha, coluna Unidade): "var" = variação contra o período anterior, unidade pela frequência;
 # "#" = série em nível, unidade e casas decimais vindas do indicadores_portal.
 UNIDADE_POR_FREQ = {"Mensal": "% m/m", "Trimestral": "% t/t", "Semestral": "% s/s", "Anual": "% a/a"}
@@ -301,6 +304,86 @@ print("✅ distinct.json exportado")
 
 # COMMAND ----------
 
+# ptax.json: card "Dólar PTAX" da home. Três blocos:
+#   dia           = compra e venda da data mais recente (hora convertida de UTC para America/Sao_Paulo)
+#   mes_corrente  = linha com mes_fechado = false (média parcial do mês)
+#   ultimo_fechado= último mês com mes_fechado = true
+# Se der erro aqui, o resto do Export segue e o portal continua com o ptax.json anterior (não sobrescreve com vazio).
+from datetime import datetime as _dt, timezone as _tz
+_SP = ZoneInfo("America/Sao_Paulo")
+
+def _num(v):
+    return None if v is None else float(v)
+
+def _data(v):
+    return str(v)[:10] if v is not None else None
+
+def _hora_sp(df, col):
+    """Lê a coluna de data/hora (UTC) como texto já no fuso certo, sem depender do fuso da sessão Spark."""
+    tipo = dict(df.dtypes).get(col, "")
+    if tipo == "timestamp":            # instante: o Spark mostra no fuso da sessão
+        origem = ZoneInfo(spark.conf.get("spark.sql.session.timeZone") or "UTC")
+        return F.date_format(F.col(col), "yyyy-MM-dd HH:mm:ss"), origem
+    return F.col(col).cast("string"), _tz.utc   # timestamp_ntz ou texto: valor gravado em UTC
+
+def _para_sp(txt, origem):
+    if not txt:
+        return None
+    t = _dt.fromisoformat(str(txt).replace("Z", "+00:00"))
+    if t.tzinfo is None:
+        t = t.replace(tzinfo=origem)
+    return t.astimezone(_SP).strftime("%Y-%m-%d %H:%M")
+
+def _linha_mes(r):
+    if r is None:
+        return None
+    ano_mes = _data(r["ano_mes"])
+    return {
+        "ano_mes": ano_mes[:7] if ano_mes else None,
+        "mes_nome": r["mes_nome"],
+        "ano": int(r["ano"]) if r["ano"] is not None else (int(ano_mes[:4]) if ano_mes else None),
+        "media_venda": _num(r["media_venda"]),
+        "dias_uteis": int(r["dias_uteis"]) if r["dias_uteis"] is not None else None,
+        "usd_fim_mes": _num(r["usd_fim_mes"]),
+        "data_ultimo_dia_util": _data(r["data_ultimo_dia_util"]),
+    }
+
+try:
+    _d = spark.table(PTAX_DIARIO_TABLE).filter(F.col("data_cotacao").isNotNull())
+    _hora, _origem = _hora_sp(_d, "data_hora_cotacao")
+    _ult = (_d.select("data_cotacao", "cotacao_compra", "cotacao_venda", _hora.alias("hora_txt"), F.col("data_hora_cotacao").alias("_ordem"))
+              .orderBy(F.desc("data_cotacao"), F.desc_nulls_last("_ordem")).limit(1).collect())
+    _m = spark.table(PTAX_MENSAL_TABLE)
+    if "ano" not in _m.columns:
+        _m = _m.withColumn("ano", F.year("ano_mes"))
+    _aberto = _m.filter(~F.coalesce(F.col("mes_fechado"), F.lit(False))).orderBy(F.desc("ano_mes")).limit(1).collect()
+    _fechado = _m.filter(F.col("mes_fechado")).orderBy(F.desc("ano_mes")).limit(1).collect()
+
+    if not _ult:
+        raise ValueError(f"{PTAX_DIARIO_TABLE} sem cotações")
+    u = _ult[0]
+    ptax = {
+        "atualizado_em": datetime.now(_SP).strftime("%Y-%m-%d %H:%M:%S"),
+        "fonte": "Banco Central do Brasil (PTAX)",
+        "dia": {
+            "data": _data(u["data_cotacao"]),
+            "data_hora": _para_sp(u["hora_txt"], _origem),   # America/Sao_Paulo, "AAAA-MM-DD HH:MM"
+            "compra": _num(u["cotacao_compra"]),
+            "venda": _num(u["cotacao_venda"]),
+        },
+        "mes_corrente": _linha_mes(_aberto[0] if _aberto else None),
+        "ultimo_fechado": _linha_mes(_fechado[0] if _fechado else None),
+    }
+    write_json("ptax.json", ptax)
+    _mc, _uf = ptax["mes_corrente"] or {}, ptax["ultimo_fechado"] or {}
+    print(f"✅ ptax.json: {ptax['dia']['data']} ({ptax['dia']['data_hora']}) compra {ptax['dia']['compra']} · venda {ptax['dia']['venda']}"
+          f" | {_mc.get('mes_nome')} parcial {_mc.get('media_venda')} ({_mc.get('dias_uteis')} d.u.)"
+          f" | {_uf.get('mes_nome')}/{_uf.get('ano')} fechado {_uf.get('media_venda')}, fim {_uf.get('usd_fim_mes')}")
+except Exception as e:
+    print(f"⚠️ ptax.json NÃO atualizado (o portal segue com o anterior): {type(e).__name__}: {str(e)[:300]}")
+
+# COMMAND ----------
+
 # indicadores.json: lê a tabela que o notebook novoind_4_Intelligence grava (INDICADORES_TABLE) e monta o formato que o portal (app.js) espera:
 # {"atualizado_em": "...", "indicadores": [{id, nome, setor, regiao, unidade, casas, frequencia, polaridade, fonte, fonte_original,
 #                                          ultima_divulgacao, proxima_divulgacao, serie: [{periodo, valor, tipo: "realizado"|"projecao"}]}]}
@@ -526,7 +609,7 @@ for i in itens:
 
 import base64, requests
 
-DATA_FILES = ["feed.json", "feed_automotivo.json", "manual.json", "resumo.json", "meta.json", "distinct.json", "indicadores.json"]  # indicadores.json é gerado na célula acima a partir da tabela do notebook novoind_4_Intelligence
+DATA_FILES = ["feed.json", "feed_automotivo.json", "manual.json", "resumo.json", "meta.json", "distinct.json", "indicadores.json", "ptax.json"]  # indicadores.json é gerado na célula acima a partir da tabela do notebook novoind_4_Intelligence
 
 def push_to_github(fname):
     token = dbutils.secrets.get(SECRET_SCOPE, SECRET_KEY)

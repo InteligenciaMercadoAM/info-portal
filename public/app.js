@@ -6,6 +6,7 @@
 //   data/resumo.json      último resumo semanal: gerado por IA (destaques → notícias) ou elaborado pela equipe (opcional)
 //   data/textos/AAAA-MM-DD.json  texto completo das notícias do dia, {id: texto}; baixado só ao abrir a notícia (opcional)
 //   data/meta.json        data/hora da última exportação (opcional)
+//   data/ptax.json        dólar PTAX: fechamento do dia, média do mês corrente e do último mês fechado (opcional)
 
 let C = {};            // config.json
 const PAGE_SIZE = 50;
@@ -23,7 +24,7 @@ const TITLES = {
   detail: ['Detalhe da notícia', '']
 };
 
-const state = { rows: [], alerts: [], indicators: [], indicatorsSample: false, resumo: null, meta: null, page: 'home', selected: null, limit: PAGE_SIZE, sort: 'relevancia' };
+const state = { rows: [], alerts: [], indicators: [], indicatorsSample: false, resumo: null, meta: null, ptax: null, page: 'home', selected: null, limit: PAGE_SIZE, sort: 'relevancia' };
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
 const norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -316,6 +317,25 @@ function applyFixedOverrides() {
     if (f.casas != null) ind.casas = f.casas;
   });
 }
+// Dólar PTAX (data/ptax.json, gerado pelo Export): 4 casas em pt-BR; valor ausente vira "—".
+const f4 = v => v == null || v === '' || !isFinite(+v) ? '—' : nf(v, 4);
+const int = v => v == null || v === '' ? '—' : esc(v);
+function ptaxCard(p) {
+  if (!p) return '';
+  const d = p.dia || {}, mc = p.mes_corrente, uf = p.ultimo_fechado;
+  const m = dparts(d.data_hora || d.data);
+  const quando = m ? `${m[3]}/${m[2]}/${m[1]}${d.data_hora && m[4] ? ` às ${m[4]}:${m[5]}` : ''}` : '—';
+  const mesNome = x => x ? `${esc(x.mes_nome || (x.ano_mes ? MONTHS[+x.ano_mes.slice(5, 7) - 1] : '—'))}${x.ano ? '/' + esc(x.ano) : ''}` : '—';
+  const mes = (x, tag, extra) => `<div class="ptax-m"><div class="ptax-lbl">${mesNome(x)} <i>${tag}</i></div>
+      <b>${f4(x?.media_venda)}</b><div class="sub">média de venda · ${int(x?.dias_uteis)} ${x?.dias_uteis === 1 ? 'dia útil' : 'dias úteis'}</div>${extra || ''}</div>`;
+  return `<div class="card ptax"><div class="card-title"><h2>Dólar PTAX</h2><span class="muted" style="font-size:12px">R$/US$ · Banco Central</span></div>
+    <div class="ptax-lbl">Fechamento · ${quando}</div>
+    <div class="ptax-day"><div><span>Compra</span><b>${f4(d.compra)}</b></div><div><span>Venda</span><b>${f4(d.venda)}</b></div></div>
+    <div class="ptax-months">
+      ${mes(mc, 'parcial')}
+      ${mes(uf, 'fechado', `<div class="sub">fim do mês: <b>${f4(uf?.usd_fim_mes)}</b>${uf?.data_ultimo_dia_util ? ` (${shortDate(uf.data_ultimo_dia_util)})` : ''}</div>`)}
+    </div></div>`;
+}
 function agenda(inds) {
   const t = todayTs();
   const next = inds.filter(i => toTs(i.proxima_divulgacao) >= t).sort((a, b) => toTs(a.proxima_divulgacao) - toTs(b.proxima_divulgacao)).slice(0, C.portal?.itens_agenda ?? 5);
@@ -378,7 +398,7 @@ function home() {
   ${showThermo ? `<div class="hero">${thermometer(state.indicators)}${kpis}</div>` : kpis}
   <div class="cols">
     <div><div class="section-head"><h2>Principais notícias por tema</h2><button class="linkbtn" data-go="feed">Ver todas as ${news.length} notícias</button></div>${themeBoxes(news)}</div>
-    <div class="stack">${state.indicators.length ? agenda(filteredIndicators()) : ''}${summaryCard()}${competitorSnapshot(news)}</div>
+    <div class="stack">${ptaxCard(state.ptax)}${state.indicators.length ? agenda(filteredIndicators()) : ''}${summaryCard()}${competitorSnapshot(news)}</div>
   </div>`;
 }
 // Aba Notícias: padrão = dia mais recente primeiro e, dentro do dia, por relevância (Relevante > score > horário).
@@ -555,7 +575,7 @@ async function load() {
     C = await getJSON('config.json', true); buildRules(); resetFilters();
     document.querySelectorAll('.nav').forEach(b => { b.hidden = hiddenPage(b.dataset.page); });
     const opt = n => getJSON('data/' + n).catch(e => { console.warn(`data/${n}:`, e.message); return null; });
-    const [bot, manual, ind, resumo, meta, auto] = await Promise.all([getJSON('data/feed.json', true), opt('manual.json'), opt('indicadores.json'), opt('resumo.json'), opt('meta.json'), opt('feed_automotivo.json')]);
+    const [bot, manual, ind, resumo, meta, auto, ptax] = await Promise.all([getJSON('data/feed.json', true), opt('manual.json'), opt('indicadores.json'), opt('resumo.json'), opt('meta.json'), opt('feed_automotivo.json'), opt('ptax.json')]);
     if (!Array.isArray(bot)) throw new Error('data/feed.json deve ser uma lista de notícias.');
     // Piloto automotivo (Automotive Business + AutoData): arquivo separado, já vem com setor "Automotivo".
     // Se ele falhar ou não existir, o portal segue só com o feed principal.
@@ -569,7 +589,7 @@ async function load() {
     state.indicators = (ind?.indicadores || []).map(prepareIndicator);
     applyFixedOverrides();
     state.indicatorsSample = !!ind?.exemplo;
-    state.resumo = resumo; state.meta = meta;
+    state.resumo = resumo; state.meta = meta; state.ptax = ptax && typeof ptax === 'object' ? ptax : null;
     fillOptions();
     const upd = meta?.atualizado_em || state.rows.map(r => r.classificado_em).filter(Boolean).sort().pop();
     const m = dparts(upd);

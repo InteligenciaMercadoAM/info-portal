@@ -200,6 +200,7 @@ Notebook `notebooks/Resumo_Semanal_IA`, modelo `databricks-meta-llama-3-3-70b-in
 ### Agendamento
 - Criado no usuário da Vanessa (substitui o da Isabela, que deve ficar desligado para não publicarem os dois).
 - Os jobs do Infomet ("1- Pipeline Medallion" e "2- Classifica + Envia Teams") são separados e não mudam.
+- **2ª rodada (dólar PTAX):** job "4- Atualizar Portal IM - PTAX", dias úteis às 13:30 (Brasília), roda o `00_atualizar_portal` com `rodada = ptax` (só PTAX + Export + commit). Criado pelo `utilitarios/criar_job_ptax`. Se a cotação de hoje não estiver no `ptax.json`, o job publica mesmo assim e falha no fim pra mandar e-mail.
 
 ### Utilitários (`notebooks/utilitarios/`)
 | Notebook | Uso |
@@ -207,6 +208,7 @@ Notebook `notebooks/Resumo_Semanal_IA`, modelo `databricks-meta-llama-3-3-70b-in
 | `listar_indicadores_4i` | busca indicadores no catálogo da 4i por palavra-chave |
 | `diagnostico_projecoes_4i` | lista as séries de um indicador e mostra se cada uma tem projeção |
 | `configurar_token_github` | guarda ou troca o token do GitHub no secret do Databricks |
+| `criar_job_ptax` | cria/ajusta o job da 2ª rodada do dia (dólar PTAX), copiando cluster e e-mails do job "3- Atualizar Portal IM" |
 
 ---
 
@@ -238,6 +240,12 @@ Mudanças só de site (`public/app.js`, `public/styles.css`, `public/config.json
 ---
 
 ## 10. Histórico de mudanças
+
+### 10/11/2026 (tarde)
+- **Card "Dólar PTAX"** na home, no topo da coluna da direita (acima de Próximas divulgações): fechamento do dia (compra/venda, data e hora de São Paulo), média parcial do mês corrente e último mês fechado (média, fim do mês, dias úteis). 4 casas, pt-BR, nulo = "—".
+- Export grava `ptax.json` a partir de `isabela_pereira.historico_completo_ptax` e `isabela_pereira.media_mensal_ptax`. Se falhar, mantém o anterior e o resto do Export segue.
+- `00_atualizar_portal`: widget `rodada` (`completa`/`ptax`), fonte opcional `PTAX` (`NB_PTAX`), `ptax.json` na lista de arquivos do commit.
+- Novo `utilitarios/criar_job_ptax`.
 
 ### 10/11/2026
 - `LEIA-ME*.md` renomeados para `README*.md` (conteúdo consolidado neste arquivo).

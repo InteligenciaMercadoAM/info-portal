@@ -7,7 +7,7 @@
 # MAGIC 2. **Automotivo:** scraping + classificação com o prompt automotivo (`noticias_automotivebusiness_arcelormittal`)
 # MAGIC 3. **4intelligence:** indicadores, realizado + projeção (`novoind_4_Intelligence...`)
 # MAGIC 4. **Resumo semanal com IA** (Llama, notebook `Resumo_Semanal_IA`): só gera quando a semana muda, nos outros dias sai em segundos
-# MAGIC 5. **Export** dos JSONs do portal (notícias, textos completos, piloto automotivo, conteúdo manual, resumo, indicadores)
+# MAGIC 5. **Export** dos JSONs do portal (notícias, textos completos, piloto automotivo, conteúdo manual, resumo, indicadores, dólar PTAX)
 # MAGIC 6. **Um commit só** no GitHub com os arquivos que mudaram. O Netlify publica sozinho em ~1 minuto.
 # MAGIC
 # MAGIC Cada fonte é independente: se uma falhar (ex.: login da 4i vencido, site fora do ar), as outras seguem
@@ -20,6 +20,10 @@
 # MAGIC Precisa rodar como a Vanessa (dona das pastas abaixo), e o login da 4i (`token_4i`) tem que ter sido feito com o usuário dela: o token fica na pasta pessoal de quem roda.
 # MAGIC As tabelas continuam no schema `isabela_pereira` (a Vanessa ainda não tem schema próprio): ela precisa de permissão de leitura e escrita nele.
 # MAGIC Se um dia ligar o Infomet aqui, desligue os jobs 1 e 2, senão tudo roda duas vezes.
+# MAGIC
+# MAGIC **Segunda rodada do dia (dólar PTAX):** o mesmo notebook roda de novo à tarde com o parâmetro `rodada = ptax`.
+# MAGIC Nessa rodada ele pula Automotivo, 4i e Resumo IA, atualiza a PTAX (se `NB_PTAX` estiver preenchido) e faz só Export + commit,
+# MAGIC pra o card do dólar mostrar o fechamento do dia. O job dessa rodada é criado pelo `utilitarios/criar_job_ptax`.
 
 # COMMAND ----------
 
@@ -41,6 +45,10 @@ PORTAL_NOTEBOOKS_DIR = (
     "/Workspace/Users/vanessa.n.silva@arcelormittal.com.br/"
     "info-portal/notebooks"
 )
+
+# Notebook que grava historico_completo_ptax e media_mensal_ptax.
+# Deixe "" se essas tabelas já são atualizadas por outro job: aí o portal só lê o que estiver lá.
+NB_PTAX = ""   # ex.: f"{PORTAL_NOTEBOOKS_DIR}/PTAX_BCB"
 
 # Cada fonte: notebooks executados em sequência.
 # (nome exibido, caminho do notebook, timeout em minutos)
@@ -89,6 +97,15 @@ FONTES = {
         ),
     ],
 
+    # Cotação do dólar (tabelas historico_completo_ptax e media_mensal_ptax). Só roda se NB_PTAX estiver preenchido abaixo.
+    "PTAX": [
+        (
+            "cotação do dólar (BCB)",
+            NB_PTAX,
+            15,
+        ),
+    ],
+
     # Roda depois das notícias, porque resume o que elas trouxeram
     "Resumo semanal IA": [
         (
@@ -103,8 +120,16 @@ RODAR = {
     "Infomet": False,
     "Automotivo": True,
     "4intelligence": True,
+    "PTAX": bool(NB_PTAX),
     "Resumo semanal IA": True,
 }
+
+# Rodada: "completa" (manhã, tudo) ou "ptax" (tarde, depois do fechamento da PTAX: só PTAX + Export + commit)
+dbutils.widgets.dropdown("rodada", "completa", ["completa", "ptax"], "rodada")
+RODADA = dbutils.widgets.get("rodada").strip().lower()
+if RODADA == "ptax":
+    RODAR = {fonte: (fonte == "PTAX" and bool(NB_PTAX)) for fonte in RODAR}
+    print("ℹ️ rodada = ptax: só dólar PTAX + Export + commit nesta rodada.")
 
 # Parâmetro usado pelo notebook "Incluir_Conteudo_Manual" (botão "Publicar no portal agora?"):
 # com "sim", pula Infomet, Automotivo e 4i e roda só Export + commit, pra o conteúdo manual sair em minutos.
@@ -136,6 +161,7 @@ ARQUIVOS = [
     "meta.json",
     "distinct.json",
     "indicadores.json",
+    "ptax.json",
 ]
 # Texto completo das notícias: um arquivo por dia em textos/ (o Export cria e apaga os que saem da janela de 90 dias)
 PASTA_TEXTOS = "textos"
@@ -184,6 +210,18 @@ print("\n■ Portal")
 ok_export = etapa("Export dos dados do portal", NB_EXPORT, 30)
 if not ok_export:
     raise RuntimeError("Export falhou: nada foi publicado. Abra o notebook do Export e rode na mão pra ver o erro. " + " | ".join(problemas))
+
+# Na rodada da tarde, confere se o card do dólar ficou com a cotação de hoje (avisa por e-mail se não, mas publica mesmo assim)
+if RODADA == "ptax":
+    import json, os
+    _hoje = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
+    _arq = f"{OUTPUT_DIR}/ptax.json"
+    _dia = (json.load(open(_arq, encoding="utf-8")).get("dia") or {}).get("data") if os.path.exists(_arq) else None
+    if _hoje.weekday() < 5 and _dia != str(_hoje):
+        problemas.append(f"PTAX: o portal ficou com a cotação de {_dia or 'nenhum dia'}, não a de hoje "
+                         "(feriado? cotação ainda não saiu? tabela historico_completo_ptax atrasada?)")
+    else:
+        print(f"  ✅ ptax.json com a cotação de {_dia}")
 
 # COMMAND ----------
 

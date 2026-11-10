@@ -203,3 +203,7 @@ main{padding-top:22px;padding-bottom:48px}
 .theme-item h3{font-size:13px;font-weight:600;margin:0 0 3px;line-height:1.35}
 .note{font-size:13px;color:var(--ink-2)}
 .kpi .proj{color:var(--muted)}
+
+.feed-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 10px}
+.feed-sort{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.feed-sort select{height:30px;padding:0 8px;border:1px solid var(--line-2);border-radius:8px;background:var(--white);color:var(--ink)}

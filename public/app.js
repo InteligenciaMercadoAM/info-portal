@@ -16,14 +16,14 @@ const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', '
 const DAY = 86400000;
 const TITLES = {
   home: ['Início', 'O que mudou no mercado, em uma tela.'],
-  feed: ['Notícias', 'Todas as publicações monitoradas, por data.'],
+  feed: ['Notícias', 'Todas as publicações monitoradas, do dia mais recente para o mais antigo e, em cada dia, das mais relevantes para as menos.'],
   external: ['Mercado externo', 'Notícias sobre aço e demanda fora do Brasil.'],
   indicators: ['Indicadores', 'Realizado e projeções 4intelligence. Linha cheia = realizado, tracejada = projeção.'],
   competitors: ['Concorrentes', 'Volume e temas das notícias de cada concorrente.'],
   detail: ['Detalhe da notícia', '']
 };
 
-const state = { rows: [], alerts: [], indicators: [], indicatorsSample: false, resumo: null, meta: null, page: 'home', selected: null, limit: PAGE_SIZE };
+const state = { rows: [], alerts: [], indicators: [], indicatorsSample: false, resumo: null, meta: null, page: 'home', selected: null, limit: PAGE_SIZE, sort: 'relevancia' };
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
 const norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -381,10 +381,19 @@ function home() {
     <div class="stack">${state.indicators.length ? agenda(filteredIndicators()) : ''}${summaryCard()}${competitorSnapshot(news)}</div>
   </div>`;
 }
+// Aba Notícias: padrão = dia mais recente primeiro e, dentro do dia, por relevância (Relevante > score > horário).
+// Por dia porque o automotivo vem sempre com score 9 e dominaria a semana inteira numa ordem só por score.
+const dayOf = ts => new Date(ts).setHours(0, 0, 0, 0) || 0;
+const FEED_SORTS = {
+  relevancia: ['Dia e relevância', (x, y) => dayOf(y.ts) - dayOf(x.ts) || byImportance(x, y)],
+  data: ['Data e hora', (x, y) => y.ts - x.ts || byScore(x, y)]
+};
 function feed() {
-  const a = filteredNews().sort((x, y) => y.ts - x.ts || byScore(x, y));
+  const [, cmp] = FEED_SORTS[state.sort] || FEED_SORTS.relevancia;
+  const a = filteredNews().sort(cmp);
   const shown = a.slice(0, state.limit);
-  return `<p class="muted" style="margin:0 0 10px"><b style="color:var(--ink)">${a.length}</b> notícias encontradas</p>
+  const sorter = `<label class="feed-sort">Ordenar por <select id="feed-sort">${Object.entries(FEED_SORTS).map(([k, [lbl]]) => `<option value="${k}"${k === state.sort ? ' selected' : ''}>${lbl}</option>`).join('')}</select></label>`;
+  return `<div class="feed-head"><p class="muted" style="margin:0"><b style="color:var(--ink)">${a.length}</b> notícias encontradas</p>${sorter}</div>
     ${shown.map(r => newsItem(r, true)).join('') || '<div class="card empty">Nenhuma notícia para os filtros selecionados.</div>'}
     ${a.length > shown.length ? `<button class="btn more" id="more">Mostrar mais (${a.length - shown.length})</button>` : ''}`;
 }
@@ -598,6 +607,7 @@ function onActivate(e) {
   }
 }
 $('content').addEventListener('click', onActivate);
+$('content').addEventListener('change', e => { if (e.target.id === 'feed-sort') { state.sort = e.target.value; state.limit = PAGE_SIZE; render(); } });
 $('content').addEventListener('keydown', e => { if (e.key === 'Enter') onActivate(e); });
 $('content').addEventListener('mouseover', e => { const g = e.target.closest('[data-tip]'); if (g) showTip(e, esc(g.dataset.tip)); });
 $('content').addEventListener('mouseout', e => { if (e.target.closest('[data-tip]')) $('tooltip').hidden = true; });

@@ -16,6 +16,17 @@
 
 # COMMAND ----------
 
+# DBTITLE 1,Atualizar databricks-sdk
+# MAGIC %pip install --upgrade databricks-sdk -q
+
+# COMMAND ----------
+
+# DBTITLE 1,Reiniciar Python
+# O DBR 14.3 vem com databricks-sdk 0.1.6 (sem autenticação no notebook e sem jobs.Task); reinicia para carregar a versão nova
+dbutils.library.restartPython()
+
+# COMMAND ----------
+
 dbutils.widgets.dropdown("simular", "sim", ["sim", "nao"], "simular")
 dbutils.widgets.text("horario", "13:30", "horário (HH:MM, São Paulo)")
 dbutils.widgets.text("cluster", "", "cluster (nome, só se o job 3 não existir)")

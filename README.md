@@ -164,7 +164,7 @@ Notebook `notebooks/Resumo_Semanal_IA`, modelo `databricks-meta-llama-3-3-70b-in
 
 | Chave | Uso |
 |---|---|
-| `portal.paginas_ocultas` | páginas escondidas do menu; link direto cai na home. Hoje: `["external"]` (Mercado Externo). Para voltar a mostrar, remova da lista |
+| `portal.paginas_ocultas` | páginas escondidas do menu; link direto cai na home. Hoje: `["external", "competitors"]` (Mercado Externo e Concorrentes; `competitors` também tira o card "Concorrentes no período" da home). Para voltar a mostrar, remova da lista |
 | `indicadores_nomes` | nomes exibidos dos indicadores; deve bater com `indicadores_portal` |
 | `indicadores_fixos` | indicadores em destaque na home |
 
@@ -257,6 +257,7 @@ Mudanças só de site (`public/app.js`, `public/styles.css`, `public/config.json
 - Calendário só com divulgações nacionais; `"frequencia": "M"` em Bens de Capital, PIM Transformação, PIM Total e Anfavea Vendas Totais.
 - Selic trocada de Efetiva (BRINR0012) para **Meta (BRINR0010)**.
 - Página **Mercado Externo** oculta via `portal.paginas_ocultas`.
+- Aba **Concorrentes** e card "Concorrentes no período" da home ocultos via `portal.paginas_ocultas` (11/11/2026).
 - Pipeline passou para o usuário da **Vanessa** (caminhos, Git folder, `portal_dados`, agendamento); tabelas seguem em `isabela_pereira`.
 
 ### 22/10/2026

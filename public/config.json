@@ -9,7 +9,7 @@
     "mostrar_termometro": false,
     "indicadores_na_home": 5,
     "dias_dado_novo": 7,
-    "paginas_ocultas": ["external"]
+    "paginas_ocultas": ["external", "competitors"]
   },
 
   "indicadores_nomes": {

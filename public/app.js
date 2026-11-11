@@ -398,7 +398,7 @@ function home() {
   ${showThermo ? `<div class="hero">${thermometer(state.indicators)}${kpis}</div>` : kpis}
   <div class="cols">
     <div><div class="section-head"><h2>Principais notícias por tema</h2><button class="linkbtn" data-go="feed">Ver todas as ${news.length} notícias</button></div>${themeBoxes(news)}</div>
-    <div class="stack">${ptaxCard(state.ptax)}${state.indicators.length ? agenda(filteredIndicators()) : ''}${summaryCard()}${competitorSnapshot(news)}</div>
+    <div class="stack">${ptaxCard(state.ptax)}${state.indicators.length ? agenda(filteredIndicators()) : ''}${summaryCard()}${hiddenPage('competitors') ? '' : competitorSnapshot(news)}</div>
   </div>`;
 }
 // Aba Notícias: padrão = dia mais recente primeiro e, dentro do dia, por relevância (Relevante > score > horário).
@@ -552,7 +552,8 @@ function go(page, push = true) {
   if (push) history.pushState(null, '', page === 'detail' && state.selected ? `#noticia/${encodeURIComponent(state.selected.id)}` : `#${page}`);
   render(); window.scrollTo(0, 0);
 }
-// Páginas escondidas pelo config.json (portal.paginas_ocultas, ex.: ["external"]): some o botão e o link direto cai na home.
+// Páginas escondidas pelo config.json (portal.paginas_ocultas, ex.: ["external", "competitors"]): some o botão, o link direto cai na home
+// e, no caso de "competitors", o card "Concorrentes no período" também sai da home.
 const hiddenPage = p => (C.portal?.paginas_ocultas || []).includes(p);
 function fromHash() {
   const h = decodeURIComponent(location.hash.slice(1));

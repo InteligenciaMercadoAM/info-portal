@@ -289,21 +289,21 @@ ja_existe = spark.table(TABELA).filter((F.col("id") == item["id"]) & F.col("ativ
 if ja_existe:
     parar("\nℹ️ Este mesmo conteúdo já está publicado (mesmo título e data). Nada foi duplicado.")
 if not salvar:
-    parar("\n👉 Está certo? Mude \"▶ Salvar de verdade?\" para \"Sim, salvar\" e clique em Run all de novo.\n"
+    print("\n👉 Está certo? Mude \"▶ Salvar de verdade?\" para \"Sim, salvar\" e clique em Run all de novo.\n"
           "   Quer corrigir? Altere as caixas e clique em Run all.")
-
-# Highlights: o novo substitui o anterior
-if item["tipo"] == "resumo":
-    spark.sql(f"UPDATE {TABELA} SET ativo = false WHERE tipo = 'resumo' AND ativo")
-
-agora = datetime.now(ZoneInfo("America/Sao_Paulo")).replace(tzinfo=None)
-linha = tuple(item[f.name] if f.name in item else None for f in SCHEMA.fields[:-2]) + (True, agora)
-spark.createDataFrame([linha], SCHEMA).write.mode("append").saveAsTable(TABELA)
-print("\n✅ Salvo!")
-limpar_campos()
-
-if publicar:
-    publicar_agora()
 else:
-    print("Aparece no portal na próxima atualização automática.\n"
-          "(Quer na hora? Na próxima vez, mude \"Publicar no portal agora?\" para \"Sim\".)")
+    # Highlights: o novo substitui o anterior
+    if item["tipo"] == "resumo":
+        spark.sql(f"UPDATE {TABELA} SET ativo = false WHERE tipo = 'resumo' AND ativo")
+
+    agora = datetime.now(ZoneInfo("America/Sao_Paulo")).replace(tzinfo=None)
+    linha = tuple(item[f.name] if f.name in item else None for f in SCHEMA.fields[:-2]) + (True, agora)
+    spark.createDataFrame([linha], SCHEMA).write.mode("append").saveAsTable(TABELA)
+    print("\n✅ Salvo!")
+    limpar_campos()
+
+    if publicar:
+        publicar_agora()
+    else:
+        print("Aparece no portal na próxima atualização automática.\n"
+            "(Quer na hora? Na próxima vez, mude \"Publicar no portal agora?\" para \"Sim\".)")

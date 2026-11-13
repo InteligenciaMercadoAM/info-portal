@@ -37,7 +37,7 @@ info-portal/
 │   ├── config.json               ← páginas ocultas, nomes dos indicadores etc.
 │   └── data/                     ← GERADO PELO PIPELINE. Não editar nem subir à mão.
 │       ├── feed.json, feed_automotivo.json, manual.json, resumo.json,
-│       │   meta.json, distinct.json, indicadores.json
+│       │   meta.json, distinct.json, indicadores.json, ptax.json
 │       └── textos/AAAA-MM-DD.json   ← texto completo das notícias, 1 arquivo por dia
 ├── notebooks/                    ← notebooks Databricks (formato .py "source")
 │   ├── 00_atualizar_portal
@@ -50,7 +50,8 @@ info-portal/
 │   └── utilitarios/
 │       ├── listar_indicadores_4i
 │       ├── diagnostico_projecoes_4i
-│       └── configurar_token_github
+│       ├── configurar_token_github
+│       └── criar_job_ptax
 └── docs/
     └── indicadores_4i_correspondencia.xlsx
 ```
@@ -69,8 +70,11 @@ Roda as fontes em sequência, gera os JSONs e publica tudo em **um commit só**.
 | 2 | Automotivo (scraping + classificação) | `Scraper_Automotivas_Economico` | `True` |
 | 3 | Indicadores 4i (realizado + projeção) | `novoind_4_Intelligence_isabela_ajustado_v3` | `True` |
 | 4 | Resumo semanal IA | `Resumo_Semanal_IA` | `True` |
-| 5 | Export dos JSONs | `Export_Portal_Data (3)` | sempre |
-| 6 | Commit único no GitHub (só arquivos que mudaram, incluindo `textos/`) | — | se `FAZER_COMMIT = True` |
+| 5 | PTAX (dólar) | `NB_PTAX` | opcional |
+| 6 | Export dos JSONs (inclui `ptax.json`) | `Export_Portal_Data (3)` | sempre |
+| 7 | Commit único no GitHub (só arquivos que mudaram, incluindo `textos/`) | — | se `FAZER_COMMIT = True` |
+
+O widget **`rodada`** define o que roda: `completa` (padrão, todas as etapas acima) ou `ptax` (só PTAX + Export + commit, usado pela 2ª rodada das 13:30; ver [seção 7](#7-ambiente-e-permissões)).
 
 **Comportamento**
 - Cada fonte é independente: se uma falhar (ex.: login da 4i vencido), as outras seguem e o portal é publicado com o que deu certo. No fim o notebook **falha de propósito** para o agendamento mandar e-mail.
@@ -133,6 +137,12 @@ Roda as fontes em sequência, gera os JSONs e publica tudo em **um commit só**.
 - Notícias da AutoData que caem no fallback de HTML ficam sem texto completo.
 - Notícias automotivas vão só para o portal, não para o Teams.
 
+### Temas do automotivo
+- Todas as notícias do piloto automotivo aparecem num **tema único, "Automotivo"**: uma caixa só na home (com as 3 principais) e uma opção só no filtro de Tema. Antes eram subtemas ("Automotivo: volume e mercado", "Automotivo: montadoras" etc.).
+- Categorias novas que o classificador criar com prefixo `auto_` (ex.: `auto_marketing`) também caem em "Automotivo", via `temas_por_prefixo` no `config.json` (lido pela `canonCategory` do `app.js`).
+- **"Veículos pesados"** (Infomet) continua como tema separado.
+- Para voltar aos subtemas: apagar `temas_por_prefixo` e restaurar os nomes antigos em `temas` no `config.json`.
+
 ### Ordem da aba Notícias
 - Padrão **"Dia e relevância"**: dia mais recente primeiro; dentro do dia, "Relevante" primeiro, depois maior score e, no empate, horário mais recente. (Por dia porque o automotivo vem sempre com score 9 e ocuparia o topo da semana numa ordem só por score.)
 - Seletor **Ordenar por** no topo da lista: "Data e hora" é a ordem antiga.
@@ -167,6 +177,9 @@ Notebook `notebooks/Resumo_Semanal_IA`, modelo `databricks-meta-llama-3-3-70b-in
 | `portal.paginas_ocultas` | páginas escondidas do menu; link direto cai na home. Hoje: `["external", "competitors"]` (Mercado Externo e Concorrentes; `competitors` também tira o card "Concorrentes no período" da home). Para voltar a mostrar, remova da lista |
 | `indicadores_nomes` | nomes exibidos dos indicadores; deve bater com `indicadores_portal` |
 | `indicadores_fixos` | indicadores em destaque na home |
+| `temas` | nome exibido de cada categoria do classificador (ex.: categorias do automotivo → "Automotivo") |
+| `temas_por_prefixo` | agrupa num tema todas as categorias que começam com um prefixo. Hoje: `auto_*` → "Automotivo" |
+| `temas_fora_da_home` | temas que não ganham caixa própria na home |
 
 ---
 
@@ -240,6 +253,12 @@ Mudanças só de site (`public/app.js`, `public/styles.css`, `public/config.json
 ---
 
 ## 10. Histórico de mudanças
+
+### 13/11/2026
+- **Automotivo num tema só:** os subtemas do piloto automotivo viraram o tema único "Automotivo" (home e filtro de Tema). Categorias com prefixo `auto_` caem nele via `temas_por_prefixo`. "Veículos pesados" segue separado.
+- `public/config.json`: temas `auto_*` = "Automotivo"; "Automotivo: eventos/outros" saíram de `temas_fora_da_home`.
+- `public/app.js`: `canonCategory` lê `temas_por_prefixo`.
+- Sem mudança em notebooks nem em `public/data/`; não precisa rodar o pipeline.
 
 ### 10/11/2026 (tarde)
 - **Card "Dólar PTAX"** na home, no topo da coluna da direita (acima de Próximas divulgações): fechamento do dia (compra/venda, data e hora de São Paulo), média parcial do mês corrente e último mês fechado (média, fim do mês, dias úteis). 4 casas, pt-BR, nulo = "—".

@@ -75,6 +75,10 @@ function makeTitle(t) {
 function canonCompany(raw) { const k = key(raw); return NO_COMPANY.has(k) ? 'Sem empresa' : ((C.empresas_alias || {})[k] || titleCase(raw)); }
 function canonCategory(raw) {
   const k = norm(raw).trim();
+  // Prefixo agrupa uma família inteira num tema só (ex.: todo "auto_*" do piloto automotivo vira "Automotivo"),
+  // inclusive categorias novas que o classificador inventar e ainda não estão no config.
+  const pre = Object.entries(C.temas_por_prefixo || {}).find(([p]) => k.startsWith(p));
+  if (pre) return pre[1];
   return (C.temas || {})[k] || (k ? k.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase()) : 'Outros');
 }
 function canonSector(raw, category) {

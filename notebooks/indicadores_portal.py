@@ -49,8 +49,8 @@ INDICADORES = [
     {"code": "BRRTL0255", "nome": "ABRAINC - Unidades Vendidas - Programa Casa Verde e Amarela CVA",  "serie": "#", "setor": "Construção civil", "fonte_original": "Abrainc/Fipe", "unidade": "unidades", "casas": 0},
     {"code": "BRRLE0007", "nome": "Secovi SP - Vendas de Imóveis Residenciais Novos",                 "serie": "#", "setor": "Construção civil", "fonte_original": "Secovi", "unidade": "unidades", "casas": 0},
     {"code": "BRRLE0010", "nome": "Secovi SP - Lançamentos Residenciais",                             "serie": "#", "setor": "Construção civil", "fonte_original": "Secovi", "unidade": "unidades", "casas": 0},
-    # Unidade do cimento: conferir na 1a rodada qual é a da série da 4i (t, mil t ou milhões de t) e preencher aqui.
-    {"code": "BRIND0125", "nome": "SNIC - Vendas de Cimento Total",                                   "serie": "#", "setor": "Construção civil", "fonte_original": "SNIC"},
+    # Cimento: a série da 4i vem em milhões de toneladas (~5,5 por mês; o SNIC divulga ~65 milhões de t por ano). 17/11/2026.
+    {"code": "BRIND0125", "nome": "SNIC - Vendas de Cimento Total",                                   "serie": "#", "setor": "Construção civil", "fonte_original": "SNIC", "unidade": "milhões de t", "casas": 2},
 
     # ---------- Confiança (FGV, variação m/m) ----------
     {"code": "BRLDG0003", "nome": "FGV - Índice de Confiança do Consumidor",  "serie": "var", "setor": "Macroeconomia",    "fonte_original": "FGV"},

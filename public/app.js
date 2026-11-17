@@ -163,6 +163,28 @@ const SIGNAL = { 1: ['up', 'Favorável'], 0: ['flat', 'Estável'], '-1': ['down'
 const signalTag = s => s == null ? '' : `<span class="signal ${SIGNAL[s][0]}">${SIGNAL[s][1]}</span>`;
 const fmtVal = (v, ind) => `${nf(v, ind.casas ?? 1)}${ind.unidade && ind.unidade.startsWith('%') ? '%' : ''}`;
 const unitSuffix = ind => ind.unidade && !ind.unidade.startsWith('%') ? ind.unidade : (ind.unidade || '').replace(/^%\s*/, '');
+// Tipo do indicador pela unidade: "% m/m", "% t/t" (ou "%" puro) = variação; o resto (unidades, milhões de t, R$/US$, pontos, % a.a.) = nível ("#").
+const isVarUnit = u => /^%\s*(?:[mtsa]\/[mtsa])?$/i.test(String(u || '').trim());
+// Cores do gráfico por TIPO DE MEDIDA (não por indicador): nível = grafite, variação % = laranja (azul = cor da concorrência).
+// Indicador de variação: linha laranja. Indicador em nível: linha grafite + 2ª linha laranja com a variação (config.portal.variacao_grafico e variacao_layout).
+const COR_NIVEL = '#1f2328', COR_VAR = '#e8700a';
+const corLinha = ind => ind.nivel ? COR_NIVEL : COR_VAR;
+const PERIODOS_ANO = { mensal: 12, trimestral: 4, semestral: 2, anual: 1 };
+const SIGLA_FREQ = { mensal: 'm/m', trimestral: 't/t', semestral: 's/s', anual: 'a/a' };
+// Variação nas séries em nível: "mom" = contra o período anterior (m/m nas mensais, t/t nas trimestrais), "yoy" = contra o mesmo
+// período do ano anterior (a/a), "" = desliga. Fica de fora quem já está em % (Selic: variação % de uma taxa não diz nada).
+function addVariation(ind) {
+  ind.nivel = !isVarUnit(ind.unidade);
+  ind.vari = null;
+  const modo = String(C.portal?.variacao_grafico ?? 'mom').toLowerCase();
+  if (!ind.nivel || !modo || String(ind.unidade || '').startsWith('%')) return;
+  const f = norm(ind.frequencia), lag = modo === 'yoy' ? (PERIODOS_ANO[f] || 12) : 1;
+  const v = ind.serie.map((p, i) => i >= lag && ind.serie[i - lag].valor ? (p.valor / ind.serie[i - lag].valor - 1) * 100 : null);
+  if (v.filter(x => x != null).length < 2) return;
+  ind.vari = v;
+  ind.variLabel = modo === 'yoy' ? 'a/a' : (SIGLA_FREQ[f] || 'vs. anterior');
+}
+const fmtPct = v => v == null ? '—' : `${v > 0 ? '+' : ''}${nf(v, 1)}%`;
 
 // ---------- filtros ----------
 const ADV = [['company', 'empresa'], ['source', 'fonte'], ['category', 'categoria'], ['relevance', 'rel'], ['origin', 'origem']];
@@ -428,11 +450,14 @@ function external() {
 }
 function indicatorCard(ind) {
   const u = unitSuffix(ind);
+  const iLast = ind.last ? ind.serie.indexOf(ind.last) : -1, vLast = ind.vari && iLast >= 0 ? ind.vari[iLast] : null;
+  const legenda = `<span><i style="border-top-color:${corLinha(ind)}"></i>Realizado</span><span><i class="dash" style="border-top-color:${corLinha(ind)}"></i>Projeção</span>`
+    + (ind.vari ? `<span><i class="var"></i>Variação % ${esc(ind.variLabel)}${String(C.portal?.variacao_layout || 'painel') === 'painel' ? '' : ' (eixo dir.)'}</span>` : '');
   return `<div class="card ind-card"><div class="head"><div><h3>${esc(ind.nome)}</h3><div class="tags"><span class="tag sector">${esc(ind.setor)}</span>${ind.frequencia ? `<span class="tag">${esc(ind.frequencia)}</span>` : ''}</div></div>${C.portal?.mostrar_termometro ? signalTag(ind.sinal) : ''}</div>
-    <div class="nums"><div>Último realizado${ind.last ? ` (${esc(ind.last.periodo)})` : ''}<b>${ind.last ? fmtVal(ind.last.valor, ind) : '—'} <small style="font-size:12px;font-weight:500;color:var(--muted)">${esc(u)}</small></b></div>
+    <div class="nums"><div>Último realizado${ind.last ? ` (${esc(ind.last.periodo)})` : ''}<b>${ind.last ? fmtVal(ind.last.valor, ind) : '—'} <small style="font-size:12px;font-weight:500;color:var(--muted)">${esc(u)}</small></b>${vLast != null ? `<span class="var-chip">${fmtPct(vLast)} ${esc(ind.variLabel)}</span>` : ''}</div>
       <div>Projeção${ind.horizon ? ` (${esc(ind.horizon.periodo)})` : ''}<b>${ind.horizon ? fmtVal(ind.horizon.valor, ind) : '—'}</b></div></div>
-    <svg class="chart" data-chart="${esc(ind.id)}" role="img" aria-label="Gráfico de ${esc(ind.nome)}: realizado e projeção"></svg>
-    <div class="chart-legend"><span><i></i>Realizado</span><span><i class="dash"></i>Projeção</span></div>
+    <svg class="chart${ind.vari ? (String(C.portal?.variacao_layout || 'painel') === 'painel' ? ' with-var painel' : ' with-var') : ''}" data-chart="${esc(ind.id)}" role="img" aria-label="Gráfico de ${esc(ind.nome)}: realizado e projeção${ind.vari ? ', com linha de variação' : ''}"></svg>
+    <div class="chart-legend">${legenda}</div>
     <div class="foot"><span>Fonte: ${esc(ind.fonte || '4intelligence')}${ind.fonte_original ? ' / ' + esc(ind.fonte_original) : ''}</span><span>${ind.realizado_novo_em ? `Última atualização histórica ${fmtDate(ind.realizado_novo_em)}` : ind.ultima_divulgacao ? `Última divulgação ${fmtDate(ind.ultima_divulgacao)}` : `Último dado: ${esc(ind.last?.periodo || '—')}`}${ind.proxima_divulgacao ? ` · próxima ${fmtDate(ind.proxima_divulgacao)}` : ''}</span></div></div>`;
 }
 function indicators() {
@@ -468,11 +493,19 @@ function drawCharts() {
 function drawChart(svg, ind, spark) {
   const W = svg.clientWidth || 300, H = svg.clientHeight || (spark ? 30 : 150);
   const pad = spark ? { l: 1, r: 1, t: 3, b: 3 } : { l: 40, r: 10, t: 10, b: 22 };
-  const pts = ind.serie, n = pts.length;
+  const pts = ind.serie, n = pts.length, cor = corLinha(ind);
+  // Variação como 2ª linha (laranja), com escala própria. config.portal.variacao_layout:
+  //   "painel" (padrão) = variação num painel separado logo abaixo do nível (sem cruzamentos entre as linhas);
+  //   "eixo_direito" = as duas linhas na mesma área, variação lida no eixo da direita.
+  const vari = !spark && ind.vari ? ind.vari : null;
+  const painel = vari && String(C.portal?.variacao_layout || 'painel') === 'painel';
+  if (vari && !painel) pad.r = 44;
+  const lineBottom = painel ? Math.round(pad.t + (H - pad.t - pad.b) * 0.6) : H - pad.b;
+  const barTop = painel ? lineBottom + 18 : pad.t, barBottom = H - pad.b;
   let lo = Math.min(...pts.map(p => p.valor)), hi = Math.max(...pts.map(p => p.valor));
   if (lo === hi) { lo -= 1; hi += 1; }
-  // Escala "redonda": passo 1, 2, 2,5 ou 5 x 10^n, com limites alinhados ao passo
-  const raw = (hi - lo) / 3, mag = 10 ** Math.floor(Math.log10(raw));
+  // Escala "redonda": passo 1, 2, 2,5 ou 5 x 10^n, com limites alinhados ao passo (2 faixas quando divide espaço com o painel de variação)
+  const raw = (hi - lo) / (painel ? 2 : 3), mag = 10 ** Math.floor(Math.log10(raw));
   const step = [1, 2, 2.5, 5, 10].map(f => f * mag).find(v => v >= raw);
   const span = hi - lo;
   lo = spark ? lo - span * 0.08 : Math.floor(lo / step) * step;
@@ -481,7 +514,7 @@ function drawChart(svg, ind, spark) {
   // Margem esquerda cresce com o tamanho do rótulo do eixo (ex.: 175.000 no Ibovespa).
   if (!spark) pad.l = Math.max(40, Math.max(nf(lo, dec).length, nf(hi, dec).length) * 6 + 12);
   const x = i => pad.l + (W - pad.l - pad.r) * (n === 1 ? 0.5 : i / (n - 1));
-  const y = v => pad.t + (H - pad.t - pad.b) * (1 - (v - lo) / (hi - lo));
+  const y = v => pad.t + (lineBottom - pad.t) * (1 - (v - lo) / (hi - lo));
   const lastReal = pts.reduce((k, p, i) => (!p.proj ? i : k), -1);
   const path = idx => idx.map((i, k) => `${k ? 'L' : 'M'}${x(i).toFixed(1)},${y(pts[i].valor).toFixed(1)}`).join('');
   const realIdx = pts.map((p, i) => i).filter(i => !pts[i].proj);
@@ -500,12 +533,37 @@ function drawChart(svg, ind, spark) {
       s += `<text x="${x(i)}" y="${H - 6}" text-anchor="${anchor}" font-size="10" fill="#6b7280">${esc(pts[i].periodo)}</text>`;
     });
   }
+  // Linha da variação. Escala simétrica em torno do zero; meses muito fora da curva (ex.: ABRAINC em jul/25, +3.387%)
+  // ficam presos na borda, com um ponto vazado. O valor real aparece no tooltip.
+  let varPaths = '';
+  if (vari) {
+    const abs = vari.filter(v => v != null).map(Math.abs).sort((a, b) => a - b);
+    const p75 = abs[Math.floor((abs.length - 1) * 0.75)] || abs[abs.length - 1] || 1;
+    let cap = Math.min(abs[abs.length - 1], Math.max(p75 * 2.5, 1));
+    const m10 = 10 ** Math.floor(Math.log10(cap)), nice = [1, 2, 2.5, 5, 10].map(f => f * m10).find(v => v >= cap);
+    cap = nice || cap;
+    const mid = (barTop + barBottom) / 2, half = (barBottom - barTop) / 2;
+    const yb = v => mid - half * Math.max(-1, Math.min(1, v / cap));
+    const lx = painel ? pad.l - 6 : W - pad.r + 6, anc = painel ? 'end' : 'start';
+    s += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${mid}" y2="${mid}" stroke="${COR_VAR}" stroke-opacity=".35" stroke-dasharray="2 3" stroke-width="1"/>`;
+    s += `<text x="${lx}" y="${barTop + 7}" text-anchor="${anc}" font-size="9" fill="${COR_VAR}">+${nf(cap, 0)}%</text>`;
+    s += `<text x="${lx}" y="${mid + 3.5}" text-anchor="${anc}" font-size="9" fill="${COR_VAR}">0%</text>`;
+    s += `<text x="${lx}" y="${barBottom}" text-anchor="${anc}" font-size="9" fill="${COR_VAR}">−${nf(cap, 0)}%</text>`;
+    const idx = vari.map((v, i) => i).filter(i => vari[i] != null);
+    const vpath = list => list.map((i, k) => `${k ? 'L' : 'M'}${x(i).toFixed(1)},${yb(vari[i]).toFixed(1)}`).join('');
+    const vr = idx.filter(i => !pts[i].proj), vp = idx.filter(i => pts[i].proj);
+    if (vr.length && vp.length) vp.unshift(vr[vr.length - 1]);
+    if (vr.length > 1) varPaths += `<path d="${vpath(vr)}" fill="none" stroke="${COR_VAR}" stroke-width="1.6" stroke-linejoin="round"/>`;
+    if (vp.length > 1) varPaths += `<path d="${vpath(vp)}" fill="none" stroke="${COR_VAR}" stroke-width="1.6" stroke-dasharray="4 3" stroke-linejoin="round"/>`;
+    idx.filter(i => Math.abs(vari[i]) > cap).forEach(i => { varPaths += `<circle cx="${x(i)}" cy="${yb(vari[i])}" r="3" fill="#fff" stroke="${COR_VAR}" stroke-width="1.5"/>`; });
+  }
   const sw = spark ? 1.5 : 2;
-  if (realIdx.length > 1) s += `<path d="${path(realIdx)}" fill="none" stroke="#1f2328" stroke-width="${sw}" stroke-linejoin="round" stroke-linecap="round"/>`;
-  if (projIdx.length > 1) s += `<path d="${path(projIdx)}" fill="none" stroke="#1f2328" stroke-width="${sw}" stroke-dasharray="4 3" stroke-linejoin="round"/>`;
-  if (lastReal >= 0) s += `<circle cx="${x(lastReal)}" cy="${y(pts[lastReal].valor)}" r="${spark ? 2.5 : 4}" fill="#1f2328" stroke="#fff" stroke-width="2"/>`;
+  s += varPaths;
+  if (realIdx.length > 1) s += `<path d="${path(realIdx)}" fill="none" stroke="${cor}" stroke-width="${sw}" stroke-linejoin="round" stroke-linecap="round"/>`;
+  if (projIdx.length > 1) s += `<path d="${path(projIdx)}" fill="none" stroke="${cor}" stroke-width="${sw}" stroke-dasharray="4 3" stroke-linejoin="round"/>`;
+  if (lastReal >= 0) s += `<circle cx="${x(lastReal)}" cy="${y(pts[lastReal].valor)}" r="${spark ? 2.5 : 4}" fill="${cor}" stroke="#fff" stroke-width="2"/>`;
   if (!spark) {
-    s += `<line class="xh" x1="0" x2="0" y1="${pad.t}" y2="${H - pad.b}" stroke="#9ca3af" stroke-width="1" visibility="hidden"/><circle class="xd" r="4" fill="#fff" stroke="#1f2328" stroke-width="2" visibility="hidden"/>`;
+    s += `<line class="xh" x1="0" x2="0" y1="${pad.t}" y2="${H - pad.b}" stroke="#9ca3af" stroke-width="1" visibility="hidden"/><circle class="xd" r="4" fill="#fff" stroke="${cor}" stroke-width="2" visibility="hidden"/>`;
     const stepX = (W - pad.l - pad.r) / Math.max(1, n - 1);
     pts.forEach((p, i) => { s += `<rect class="hit" data-i="${i}" x="${x(i) - stepX / 2}" y="0" width="${stepX}" height="${H}" fill="transparent"/>`; });
   }
@@ -515,10 +573,11 @@ function drawChart(svg, ind, spark) {
   const xh = svg.querySelector('.xh'), xd = svg.querySelector('.xd'), tip = $('tooltip');
   svg.querySelectorAll('.hit').forEach(h => {
     h.addEventListener('mousemove', e => {
-      const p = pts[+h.dataset.i], cx = x(+h.dataset.i), cy = y(p.valor);
+      const i = +h.dataset.i, p = pts[i], cx = x(i), cy = y(p.valor);
       xh.setAttribute('x1', cx); xh.setAttribute('x2', cx); xh.setAttribute('visibility', 'visible');
       xd.setAttribute('cx', cx); xd.setAttribute('cy', cy); xd.setAttribute('visibility', 'visible');
-      showTip(e, `<b>${esc(p.periodo)}</b> · ${fmtVal(p.valor, ind)} ${esc(unitSuffix(ind))} · ${p.proj ? 'projeção' : 'realizado'}`);
+      const vtxt = vari && vari[i] != null ? ` · <span style="color:#fdba74">${fmtPct(vari[i])} ${esc(ind.variLabel)}</span>` : '';
+      showTip(e, `<b>${esc(p.periodo)}</b> · ${fmtVal(p.valor, ind)} ${esc(unitSuffix(ind))}${vtxt} · ${p.proj ? 'projeção' : 'realizado'}`);
     });
     h.addEventListener('mouseleave', () => { xh.setAttribute('visibility', 'hidden'); xd.setAttribute('visibility', 'hidden'); tip.hidden = true; });
   });
@@ -554,7 +613,7 @@ function render() {
 function go(page, push = true) {
   state.page = page; state.limit = PAGE_SIZE;
   if (push) history.pushState(null, '', page === 'detail' && state.selected ? `#noticia/${encodeURIComponent(state.selected.id)}` : `#${page}`);
-  render(); window.scrollTo(0, 0);
+  render(); window.scrollTo(0, 0); trackPage();
 }
 // Páginas escondidas pelo config.json (portal.paginas_ocultas, ex.: ["external", "competitors"]): some o botão, o link direto cai na home
 // e, no caso de "competitors", o card "Concorrentes no período" também sai da home.
@@ -563,7 +622,52 @@ function fromHash() {
   const h = decodeURIComponent(location.hash.slice(1));
   if (h.startsWith('noticia/')) { const id = h.slice(8); state.selected = [...state.rows, ...state.alerts].find(r => r.id === id) || null; state.page = 'detail'; }
   else state.page = TITLES[h] && h !== 'detail' && !hiddenPage(h) ? h : 'home';
-  render();
+  render(); trackPage();
+}
+
+// ---------- medição de acessos (GoatCounter) ----------
+// Só liga se o config.json tiver portal.analytics_goatcounter (endereço .../count do site criado em goatcounter.com).
+// Sem cookies e sem identificar ninguém. O portal não recarrega ao trocar de aba, então cada aba e cada notícia aberta
+// é contada aqui como uma "página"; filtros, busca, temas e links para a fonte original entram como eventos.
+// Para não contar os próprios acessos (equipe IM), abra uma vez o portal com #toggle-goatcounter no fim do endereço.
+const GC_PATHS = { home: '/inicio', feed: '/noticias', external: '/mercado-externo', indicators: '/indicadores', competitors: '/concorrentes' };
+const GC_FILTROS = { search: 'busca', sector: 'setor', region: 'regiao', period: 'periodo', company: 'empresa', source: 'fonte', category: 'tema', relevance: 'relevancia', origin: 'origem', score: 'score-minimo' };
+const gcQueue = [], gcTimers = {};
+let gcOn = false, gcFirst = true;
+const gcPart = v => String(v ?? '').replace(/\s+/g, ' ').replace(/\//g, '-').trim().slice(0, 80) || '(vazio)';
+function initAnalytics() {
+  const url = String(C.portal?.analytics_goatcounter || '').trim();
+  if (gcOn || !/^https:\/\/\S+\/count$/.test(url)) return;
+  gcOn = true;
+  window.goatcounter = { no_onload: true, no_events: true };
+  const sc = document.createElement('script');
+  sc.async = true; sc.src = 'goatcounter.js'; sc.dataset.goatcounter = url;
+  sc.onload = () => gcQueue.splice(0).forEach(o => window.goatcounter.count(o));
+  document.head.appendChild(sc);
+}
+function track(o) {
+  if (!gcOn) return;
+  try { if (window.goatcounter?.count) window.goatcounter.count(o); else gcQueue.push(o); } catch (e) { console.warn('analytics:', e); }
+}
+// Página vista. A origem (referrer) só vale para a primeira: nas trocas de aba internas ela não muda.
+function trackPage() {
+  const r = state.selected;
+  const o = state.page === 'detail'
+    ? (r ? { path: `/noticia/${gcPart(r.id)}`, title: `Notícia: ${r.titulo}` } : { path: '/noticia', title: 'Notícia não encontrada' })
+    : { path: GC_PATHS[state.page] || '/' + state.page, title: TITLES[state.page]?.[0] || state.page };
+  if (!gcFirst) o.referrer = '';
+  gcFirst = false;
+  track(o);
+}
+// Evento: o detalhe vai no próprio nome (ex.: filtro/setor/Automotivo), porque o GoatCounter agrupa por nome.
+const trackEvent = (...parts) => track({ path: parts.map(gcPart).join('/'), title: parts.map(gcPart).join(' · '), event: true, referrer: '' });
+function trackFilter(id) {
+  clearTimeout(gcTimers[id]);
+  gcTimers[id] = setTimeout(() => {
+    const el = $(id);
+    if (id === 'search') { const q = el.value.trim().toLowerCase(); if (q.length >= 3) trackEvent('busca', q); return; }
+    trackEvent('filtro', GC_FILTROS[id] || id, el.tagName === 'SELECT' ? (el.value ? el.selectedOptions[0]?.text : 'todos') : el.value);
+  }, id === 'search' || id === 'score' ? 1500 : 300);
 }
 
 // ---------- carga ----------
@@ -577,7 +681,7 @@ async function getJSON(path, required = false) {
 async function load() {
   $('updated').textContent = 'Carregando...';
   try {
-    C = await getJSON('config.json', true); buildRules(); resetFilters();
+    C = await getJSON('config.json', true); buildRules(); resetFilters(); initAnalytics();
     document.querySelectorAll('.nav').forEach(b => { b.hidden = hiddenPage(b.dataset.page); });
     const opt = n => getJSON('data/' + n).catch(e => { console.warn(`data/${n}:`, e.message); return null; });
     const [bot, manual, ind, resumo, meta, auto, ptax] = await Promise.all([getJSON('data/feed.json', true), opt('manual.json'), opt('indicadores.json'), opt('resumo.json'), opt('meta.json'), opt('feed_automotivo.json'), opt('ptax.json')]);
@@ -593,6 +697,7 @@ async function load() {
     state.rows = [...state.alerts, ...man.filter(m => !isAlert(m)).map(m => prepare(m, true)), ...raw.map(r => prepare(r))].filter(dedupe);
     state.indicators = (ind?.indicadores || []).map(prepareIndicator);
     applyFixedOverrides();
+    state.indicators.forEach(addVariation);
     state.indicatorsSample = !!ind?.exemplo;
     state.resumo = resumo; state.meta = meta; state.ptax = ptax && typeof ptax === 'object' ? ptax : null;
     fillOptions();
@@ -609,30 +714,40 @@ async function load() {
 // ---------- eventos ----------
 document.querySelectorAll('.nav').forEach(b => b.onclick = () => go(b.dataset.page));
 ['search', 'sector', 'region', 'period', 'company', 'source', 'category', 'relevance', 'origin', 'score']
-  .forEach(id => $(id).addEventListener('input', () => { state.limit = PAGE_SIZE; if (state.page === 'detail') go('feed'); else render(); }));
+  .forEach(id => $(id).addEventListener('input', () => { trackFilter(id); state.limit = PAGE_SIZE; if (state.page === 'detail') go('feed'); else render(); }));
 const openAdvanced = () => { $('advanced').hidden = false; $('more-filters').classList.add('on'); $('more-filters').setAttribute('aria-expanded', 'true'); };
 $('more-filters').onclick = () => {
   const adv = $('advanced'); adv.hidden = !adv.hidden;
   $('more-filters').classList.toggle('on', !adv.hidden); $('more-filters').setAttribute('aria-expanded', String(!adv.hidden));
 };
-$('clear').onclick = () => { resetFilters(); render(); };
+$('clear').onclick = () => { resetFilters(); render(); trackEvent('filtro', 'limpar'); };
 function onActivate(e) {
   const t = e.target;
-  if (t.id === 'more') { state.limit += PAGE_SIZE; render(); return; }
+  if (t.id === 'more') { state.limit += PAGE_SIZE; render(); trackEvent(state.page, 'carregar-mais'); return; }
   if (t.closest('[data-back]')) { history.length > 1 ? history.back() : go('feed'); return; }
   const goEl = t.closest('[data-go]'); if (goEl) { go(goEl.dataset.go); return; }
-  const th = t.closest('[data-theme]'); if (th) { $('category').value = th.dataset.theme; openAdvanced(); go('feed'); return; }
-  const comp = t.closest('[data-company]'); if (comp) { $('company').value = comp.dataset.company; openAdvanced(); go('feed'); return; }
+  const th = t.closest('[data-theme]'); if (th) { trackEvent('home', 'tema', th.dataset.theme); $('category').value = th.dataset.theme; openAdvanced(); go('feed'); return; }
+  const comp = t.closest('[data-company]'); if (comp) { trackEvent('empresa', comp.dataset.company); $('company').value = comp.dataset.company; openAdvanced(); go('feed'); return; }
   const n = t.closest('[data-id]');
   if (n) {
     const id = n.dataset.id, r = [...state.rows, ...state.alerts].find(x => x.id === id);
     // notícia do resumo que já saiu da janela do portal: abre a fonte original
-    if (!r && n.dataset.url) { window.open(n.dataset.url, '_blank', 'noopener'); return; }
+    if (!r && n.dataset.url) { trackEvent('fonte-original', hostOf(n.dataset.url)); window.open(n.dataset.url, '_blank', 'noopener'); return; }
     state.selected = r; go('detail');
   }
 }
-$('content').addEventListener('click', onActivate);
-$('content').addEventListener('change', e => { if (e.target.id === 'feed-sort') { state.sort = e.target.value; state.limit = PAGE_SIZE; render(); } });
+const hostOf = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return 'link'; } };
+$('content').addEventListener('click', e => {
+  // links que saem do portal (fonte original da notícia, resumo completo)
+  const a = e.target.closest('a[href^="http"]');
+  if (a) { trackEvent(a.closest('.summary') ? 'resumo-semanal' : 'fonte-original', hostOf(a.href)); return; }
+  onActivate(e);
+});
+// Resumo semanal: qual destaque as pessoas abrem ("toggle" não borbulha, por isso a captura)
+$('content').addEventListener('toggle', e => {
+  if (e.target.matches?.('details.dg') && e.target.open) trackEvent('resumo-semanal', 'destaque', e.target.querySelector('.dg-head b')?.textContent);
+}, true);
+$('content').addEventListener('change', e => { if (e.target.id === 'feed-sort') { trackEvent('noticias', 'ordenar', e.target.value); state.sort = e.target.value; state.limit = PAGE_SIZE; render(); } });
 $('content').addEventListener('keydown', e => { if (e.key === 'Enter') onActivate(e); });
 $('content').addEventListener('mouseover', e => { const g = e.target.closest('[data-tip]'); if (g) showTip(e, esc(g.dataset.tip)); });
 $('content').addEventListener('mouseout', e => { if (e.target.closest('[data-tip]')) $('tooltip').hidden = true; });

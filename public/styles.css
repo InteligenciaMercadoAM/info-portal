@@ -216,3 +216,9 @@ main{padding-top:22px;padding-bottom:48px}
 .feed-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 10px}
 .feed-sort{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
 .feed-sort select{height:30px;padding:0 8px;border:1px solid var(--line-2);border-radius:8px;background:var(--white);color:var(--ink)}
+
+/* Variação % nos indicadores em nível (17/11/2026): 2ª linha laranja (painel abaixo ou eixo à direita).
+   Todos os gráficos da aba Indicadores com a mesma altura, com ou sem a linha de variação. */
+.ind-card .chart{height:220px}
+.chart-legend i.var{border-top-color:#e8700a}
+.var-chip{display:inline-block;margin-top:2px;font-size:11px;font-weight:600;color:#c2570a}

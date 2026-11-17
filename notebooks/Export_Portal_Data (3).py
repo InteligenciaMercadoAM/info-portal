@@ -70,6 +70,7 @@ UNIDADE_POR_FREQ = {"Mensal": "% m/m", "Trimestral": "% t/t", "Semestral": "% s/
 # O "id" é o que o config.json do portal usa em "indicadores_fixos" e "indicadores_nomes" (aqui, o próprio código 4i).
 INDICADORES_PORTAL = {i["code"]: {"id": i["code"], **{k: v for k, v in i.items() if k != "code"}} for i in INDICADORES}
 SETOR_PADRAO_INDICADOR = "Macroeconomia"
+FREQ_NOME = {"M": "Mensal", "Q": "Trimestral", "S": "Semestral", "Y": "Anual"}   # código do indicadores_portal -> nome
 # Quantos pontos mandar ao gráfico: (últimos realizados, primeiras projeções) por frequência. A série completa deixaria o gráfico ilegível.
 JANELA_SERIE = {"Diária": (90, 30), "Semanal": (52, 12), "Mensal": (24, 12), "Trimestral": (12, 6), "Semestral": (8, 4), "Anual": (8, 3)}
 
@@ -436,7 +437,9 @@ def montar_indicador(code, meta, obs, hoje, mapa, proj=None):
     real = [(d, v) for d, v in obs if d is not None and v is not None]
     if not real:
         return None
-    freq = mapa.get("frequencia") or _frequencia([d for d, _ in real])
+    # "frequencia" travada no indicadores_portal vem como código (M/Q/Y). Converte pro nome, senão o portal recebia "M",
+    # unidade "%" no lugar de "% m/m" e períodos "01/07/26" no lugar de "jul/26" (Bens de Capital, PIM, Anfavea Vendas Totais).
+    freq = FREQ_NOME.get(mapa.get("frequencia")) or _frequencia([d for d, _ in real])
     # Projeção vem da tabela de projeções (TABELA_PROJ do novoind). Só entra o que for depois do último realizado.
     ultimo = real[-1][0]
     proj = [(d, v) for d, v in (proj or []) if d is not None and v is not None and d > ultimo]

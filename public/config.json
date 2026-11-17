@@ -9,7 +9,13 @@
     "mostrar_termometro": false,
     "indicadores_na_home": 5,
     "dias_dado_novo": 7,
-    "paginas_ocultas": ["external", "competitors"]
+    "paginas_ocultas": ["external", "competitors"],
+    "_analytics_goatcounter": "Medição de acessos (GoatCounter). Cole aqui o endereço de contagem do site criado em goatcounter.com, ex.: https://portalim.goatcounter.com/count. Vazio = portal não mede nada.",
+    "analytics_goatcounter": "",
+    "_variacao_grafico": "Linha de variação % no gráfico dos indicadores em nível (unidades, milhões de t, R$/US$, pontos). \"mom\" = contra o período anterior (m/m), \"yoy\" = contra o mesmo mês do ano anterior (a/a), \"\" = sem a linha. Indicadores que já são % (variação, Selic) não ganham essa linha.",
+    "variacao_grafico": "mom",
+    "_variacao_layout": "Onde fica a linha de variação: \"painel\" = num painel separado logo abaixo do nível (padrão); \"eixo_direito\" = junto com o nível, lida no eixo da direita.",
+    "variacao_layout": "painel"
   },
 
   "indicadores_nomes": {
